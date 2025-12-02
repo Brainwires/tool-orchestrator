@@ -1,0 +1,30 @@
+[package]
+name = "tool-orchestrator"
+version = "0.1.0"
+edition = "2024"
+description = "Rhai-based tool orchestration for AI agents - implements Anthropic's programmatic tool calling pattern"
+license = "MIT"
+authors = ["Brainwires Team"]
+keywords = ["ai", "agent", "tools", "orchestration", "rhai"]
+repository = "https://github.com/Brainwires/tool-orchestrator"
+
+[dependencies]
+# Embedded scripting engine (pure Rust)
+rhai = { version = "1.20", features = ["sync", "serde"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime support
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.4"
