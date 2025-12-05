@@ -410,6 +410,94 @@ Tool {
 
 When the LLM needs to perform multi-step operations, it writes a Rhai script instead of making sequential individual tool calls. The script executes locally, and only the final result enters the context window.
 
+## Instructing LLMs to Generate Rhai
+
+To use programmatic tool calling, your LLM needs to know how to write Rhai scripts. Include something like this in your system prompt:
+
+### System Prompt Template
+
+```
+You have access to a script execution tool that runs Rhai code. When you need to:
+- Call multiple tools in sequence
+- Process data from tool results
+- Loop over items or aggregate results
+- Apply conditional logic based on tool outputs
+
+Write a Rhai script instead of making individual tool calls.
+
+## Rhai Syntax Quick Reference
+
+Variables and types:
+  let x = 42;                    // integer
+  let name = "hello";            // string
+  let items = [1, 2, 3];         // array
+  let config = #{ key: "value" }; // map (object)
+
+String interpolation (use backticks):
+  let msg = `Hello, ${name}!`;
+  let result = `Found ${items.len()} items`;
+
+Loops:
+  for item in items { /* body */ }
+  for i in 0..10 { /* 0 to 9 */ }
+
+Conditionals:
+  if x > 5 { "big" } else { "small" }
+
+String methods:
+  s.len(), s.contains("x"), s.starts_with("x"), s.ends_with("x")
+  s.split(","), s.trim(), s.to_upper(), s.to_lower()
+  s.sub_string(start, len), s.index_of("x")
+
+Array methods:
+  arr.push(item), arr.len(), arr.pop()
+  arr.filter(|x| x > 5), arr.map(|x| x * 2)
+
+Parsing:
+  "42".parse_int(), "3.14".parse_float()
+
+Available tools (call as functions):
+  {TOOL_LIST}
+
+## Important Rules
+
+1. The LAST expression in your script is the return value
+2. Use string interpolation with backticks for output: `Result: ${value}`
+3. Process data locally - don't return intermediate results
+4. Only return the final summary/answer
+
+## Example
+
+Task: Get total expenses for employees 1-3
+
+Script:
+let total = 0;
+for id in [1, 2, 3] {
+    let expenses = get_expenses(id);  // Returns JSON array
+    // Parse and sum (simplified)
+    total += expenses.len() * 100;    // Estimate
+}
+`Total across 3 employees: $${total}`
+```
+
+### Rhai Syntax Cheatsheet for LLMs
+
+| Concept | Rhai Syntax | Notes |
+|---------|-------------|-------|
+| **Variables** | `let x = 5;` | Immutable by default |
+| **Mutable** | `let x = 5; x = 10;` | Can reassign |
+| **Strings** | `"hello"` or `` `hello` `` | Backticks allow interpolation |
+| **Interpolation** | `` `Value: ${x}` `` | Only in backtick strings |
+| **Arrays** | `[1, 2, 3]` | Dynamic, mixed types OK |
+| **Maps** | `#{ a: 1, b: 2 }` | Like JSON objects |
+| **For loops** | `for x in arr { }` | Iterates over arrays |
+| **Ranges** | `for i in 0..5 { }` | 0, 1, 2, 3, 4 |
+| **If/else** | `if x > 5 { a } else { b }` | Expression-based |
+| **Functions** | `fn add(a, b) { a + b }` | Last expr is return |
+| **Tool calls** | `tool_name(arg)` | Registered tools are functions |
+| **Comments** | `// comment` | Single line |
+| **Unit (null)** | `()` | Like None/null |
+
 ## Related Projects
 
 - **[open-ptc-agent](https://github.com/Chen-zexi/open-ptc-agent)** - Python implementation using Daytona sandbox

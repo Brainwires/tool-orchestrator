@@ -1,9 +1,58 @@
-//! Core types for tool orchestration
+//! Core types for tool orchestration.
+//!
+//! This module defines the fundamental data structures used throughout the
+//! tool orchestrator:
+//!
+//! - [`OrchestratorResult`] - The outcome of script execution
+//! - [`ToolCall`] - A record of each tool invocation
+//! - [`OrchestratorError`] - Error types for various failure modes
+//!
+//! # Example
+//!
+//! ```ignore
+//! use tool_orchestrator::types::{OrchestratorResult, ToolCall};
+//!
+//! // Results are typically returned from ToolOrchestrator::execute()
+//! let result = OrchestratorResult::success(
+//!     "Hello, world!".to_string(),
+//!     vec![],
+//!     50,
+//! );
+//!
+//! assert!(result.success);
+//! ```
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Result from executing an orchestration script
+/// Result from executing an orchestration script.
+///
+/// Contains the execution outcome including the script's output,
+/// a log of all tool calls made, timing information, and any error details.
+///
+/// # Fields
+///
+/// - `success` - Whether the script completed without errors
+/// - `output` - The return value of the script (final expression)
+/// - `tool_calls` - Complete log of every tool invocation
+/// - `execution_time_ms` - Total wall-clock time for execution
+/// - `error` - Error message if execution failed
+///
+/// # Example
+///
+/// ```ignore
+/// let result = orchestrator.execute(script, limits)?;
+///
+/// if result.success {
+///     println!("Output: {}", result.output);
+///     println!("Made {} tool calls in {}ms",
+///         result.tool_calls.len(),
+///         result.execution_time_ms
+///     );
+/// } else {
+///     eprintln!("Error: {}", result.error.unwrap_or_default());
+/// }
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorResult {
     /// Whether execution completed successfully
@@ -42,7 +91,31 @@ impl OrchestratorResult {
     }
 }
 
-/// Record of a single tool call during script execution
+/// Record of a single tool call during script execution.
+///
+/// Each time a registered tool is invoked from a Rhai script, a `ToolCall`
+/// record is created capturing the invocation details. This provides an
+/// audit trail and enables debugging of tool orchestration workflows.
+///
+/// # Fields
+///
+/// - `tool_name` - The registered name of the tool
+/// - `input` - Arguments passed to the tool (serialized as JSON)
+/// - `output` - The tool's return value (or error message)
+/// - `success` - Whether the tool executed without error
+/// - `duration_ms` - How long the tool took to execute
+///
+/// # Example
+///
+/// ```ignore
+/// // After execution, inspect tool calls
+/// for call in &result.tool_calls {
+///     println!("Tool: {} took {}ms", call.tool_name, call.duration_ms);
+///     if !call.success {
+///         println!("  Failed: {}", call.output);
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     /// Name of the tool that was called
@@ -76,27 +149,66 @@ impl ToolCall {
     }
 }
 
-/// Errors that can occur during orchestration
+/// Errors that can occur during orchestration.
+///
+/// These error types cover the various failure modes of script execution:
+///
+/// - **Compilation errors** - Invalid Rhai syntax
+/// - **Execution errors** - Runtime errors in the script
+/// - **Limit violations** - Operations, tool calls, or time exceeded
+/// - **Tool errors** - Problems with tool registration or execution
+///
+/// # Error Handling
+///
+/// All errors implement `std::error::Error` and provide human-readable messages.
+///
+/// ```ignore
+/// match orchestrator.execute(script, limits) {
+///     Ok(result) => println!("Success: {}", result.output),
+///     Err(OrchestratorError::Timeout(ms)) => {
+///         eprintln!("Script timed out after {}ms", ms);
+///     }
+///     Err(OrchestratorError::MaxOperationsExceeded(ops)) => {
+///         eprintln!("Script exceeded {} operations (infinite loop?)", ops);
+///     }
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
 #[derive(Debug, Error)]
 pub enum OrchestratorError {
+    /// Script failed to compile due to syntax errors.
     #[error("Script compilation failed: {0}")]
     CompilationError(String),
 
+    /// Script execution failed at runtime.
     #[error("Script execution failed: {0}")]
     ExecutionError(String),
 
+    /// Script exceeded the maximum allowed operations.
+    ///
+    /// This typically indicates an infinite or very long loop.
+    /// The contained value is the limit that was exceeded.
     #[error("Script exceeded maximum operations ({0})")]
     MaxOperationsExceeded(u64),
 
+    /// Script made too many tool calls.
+    ///
+    /// The contained value is the limit that was exceeded.
     #[error("Script exceeded maximum tool calls ({0})")]
     MaxToolCallsExceeded(usize),
 
+    /// Script execution exceeded the time limit.
+    ///
+    /// Enforced in real-time via Rhai's `on_progress` callback.
+    /// The contained value is the timeout in milliseconds.
     #[error("Script execution timed out after {0}ms")]
     Timeout(u64),
 
+    /// Referenced tool was not registered with the orchestrator.
     #[error("Tool not found: {0}")]
     ToolNotFound(String),
 
+    /// A registered tool returned an error during execution.
     #[error("Tool execution failed: {0}")]
     ToolError(String),
 }

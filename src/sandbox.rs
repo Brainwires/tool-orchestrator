@@ -1,8 +1,55 @@
-//! Execution limits and sandboxing for safe script execution
+//! Execution limits and sandboxing for safe script execution.
+//!
+//! This module provides [`ExecutionLimits`], a configurable struct that controls
+//! resource usage during Rhai script execution. These limits protect against:
+//!
+//! - **Infinite loops** - via `max_operations`
+//! - **Runaway tool calls** - via `max_tool_calls`
+//! - **Long-running scripts** - via `timeout_ms` (real-time enforcement)
+//! - **Memory exhaustion** - via `max_string_size`, `max_array_size`, `max_map_size`
+//!
+//! # Preset Profiles
+//!
+//! Three preset profiles are provided for common use cases:
+//!
+//! | Profile | Max Ops | Max Tools | Timeout | Use Case |
+//! |---------|---------|-----------|---------|----------|
+//! | `quick()` | 10,000 | 10 | 5s | Simple scripts |
+//! | `default()` | 100,000 | 50 | 30s | General use |
+//! | `extended()` | 500,000 | 100 | 120s | Complex orchestration |
+//!
+//! # Example
+//!
+//! ```ignore
+//! use tool_orchestrator::ExecutionLimits;
+//!
+//! // Use a preset
+//! let limits = ExecutionLimits::quick();
+//!
+//! // Or customize with the builder pattern
+//! let limits = ExecutionLimits::default()
+//!     .with_max_operations(50_000)
+//!     .with_timeout_ms(10_000);
+//! ```
 
 use serde::{Deserialize, Serialize};
 
-/// Limits for safe script execution
+/// Limits for safe script execution.
+///
+/// Configures resource bounds to prevent runaway scripts from consuming
+/// excessive CPU, memory, or time. All limits are enforced by the Rhai
+/// engine during script execution.
+///
+/// # Security Note
+///
+/// The `timeout_ms` limit is enforced in real-time via Rhai's `on_progress`
+/// callback, which is checked after every operation. This provides true
+/// wall-clock timeout protection, not just operation counting.
+///
+/// # Serialization
+///
+/// This struct derives `Serialize` and `Deserialize` for easy configuration
+/// storage and transmission (e.g., in JSON config files or API requests).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionLimits {
     /// Maximum number of operations (prevents infinite loops)
@@ -33,12 +80,26 @@ impl Default for ExecutionLimits {
 }
 
 impl ExecutionLimits {
-    /// Create new limits with all defaults
+    /// Create new limits with all defaults.
+    ///
+    /// Equivalent to [`ExecutionLimits::default()`].
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Create quick execution limits for simple scripts
+    /// Create quick execution limits for simple scripts.
+    ///
+    /// Suitable for short, trusted scripts that need fast execution:
+    /// - 10,000 max operations
+    /// - 10 max tool calls
+    /// - 5 second timeout
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::quick();
+    /// let result = orchestrator.execute("1 + 1", limits)?;
+    /// ```
     pub fn quick() -> Self {
         Self {
             max_operations: 10_000,
@@ -48,7 +109,19 @@ impl ExecutionLimits {
         }
     }
 
-    /// Create extended limits for complex orchestration
+    /// Create extended limits for complex orchestration.
+    ///
+    /// Suitable for complex multi-tool workflows:
+    /// - 500,000 max operations
+    /// - 100 max tool calls
+    /// - 2 minute timeout
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::extended();
+    /// let result = orchestrator.execute(complex_script, limits)?;
+    /// ```
     pub fn extended() -> Self {
         Self {
             max_operations: 500_000,
@@ -58,37 +131,97 @@ impl ExecutionLimits {
         }
     }
 
-    /// Builder: set max operations
+    /// Set maximum operations (builder pattern).
+    ///
+    /// Controls how many Rhai operations (expressions, statements) can execute
+    /// before the script is terminated. Prevents infinite loops.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::default()
+    ///     .with_max_operations(50_000);
+    /// ```
     pub fn with_max_operations(mut self, max: u64) -> Self {
         self.max_operations = max;
         self
     }
 
-    /// Builder: set max tool calls
+    /// Set maximum tool calls (builder pattern).
+    ///
+    /// Limits how many times tools can be invoked from a single script.
+    /// Prevents runaway tool usage.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::default()
+    ///     .with_max_tool_calls(25);
+    /// ```
     pub fn with_max_tool_calls(mut self, max: usize) -> Self {
         self.max_tool_calls = max;
         self
     }
 
-    /// Builder: set timeout
+    /// Set timeout in milliseconds (builder pattern).
+    ///
+    /// Enforced in real-time via Rhai's `on_progress` callback, which is
+    /// checked after every operation. This provides true wall-clock timeout.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::default()
+    ///     .with_timeout_ms(10_000); // 10 seconds
+    /// ```
     pub fn with_timeout_ms(mut self, timeout: u64) -> Self {
         self.timeout_ms = timeout;
         self
     }
 
-    /// Builder: set max string size
+    /// Set maximum string size in bytes (builder pattern).
+    ///
+    /// Prevents scripts from creating extremely large strings that could
+    /// exhaust memory.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::default()
+    ///     .with_max_string_size(5_000_000); // 5MB
+    /// ```
     pub fn with_max_string_size(mut self, size: usize) -> Self {
         self.max_string_size = size;
         self
     }
 
-    /// Builder: set max array size
+    /// Set maximum array size (builder pattern).
+    ///
+    /// Prevents scripts from creating extremely large arrays that could
+    /// exhaust memory.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::default()
+    ///     .with_max_array_size(5_000);
+    /// ```
     pub fn with_max_array_size(mut self, size: usize) -> Self {
         self.max_array_size = size;
         self
     }
 
-    /// Builder: set max map size
+    /// Set maximum map size (builder pattern).
+    ///
+    /// Prevents scripts from creating extremely large maps/objects that could
+    /// exhaust memory.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let limits = ExecutionLimits::default()
+    ///     .with_max_map_size(500);
+    /// ```
     pub fn with_max_map_size(mut self, size: usize) -> Self {
         self.max_map_size = size;
         self

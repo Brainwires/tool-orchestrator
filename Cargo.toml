@@ -55,6 +55,23 @@ instant = { version = "0.1", features = ["wasm-bindgen"], optional = true }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.55"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "token_comparison"
+harness = false
+
+[[example]]
+name = "expense_aggregation"
+required-features = ["native"]
+
+[[example]]
+name = "file_operations"
+required-features = ["native"]
+
+[[example]]
+name = "multi_api"
+required-features = ["native"]
 
 [profile.release]
 opt-level = "s"

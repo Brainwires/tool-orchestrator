@@ -1,4 +1,53 @@
-//! Rhai engine setup and tool orchestration
+//! Rhai engine setup and tool orchestration.
+//!
+//! This module contains the core [`ToolOrchestrator`] struct that executes
+//! Rhai scripts with access to registered tools. It implements Anthropic's
+//! "Programmatic Tool Calling" pattern.
+//!
+//! # Architecture
+//!
+//! The orchestrator uses feature-gated thread-safety primitives:
+//!
+//! - **`native`** feature: Uses `Arc<Mutex<T>>` for thread-safe execution
+//! - **`wasm`** feature: Uses `Rc<RefCell<T>>` for single-threaded WASM
+//!
+//! # Key Components
+//!
+//! - [`ToolOrchestrator`] - Main entry point for script execution
+//! - [`ToolExecutor`] - Type alias for tool callback functions
+//! - [`dynamic_to_json`] - Converts Rhai values to JSON for tool input
+//!
+//! # Example
+//!
+//! ```ignore
+//! use tool_orchestrator::{ToolOrchestrator, ExecutionLimits};
+//!
+//! let mut orchestrator = ToolOrchestrator::new();
+//!
+//! // Register a tool
+//! orchestrator.register_executor("greet", |input| {
+//!     let name = input.as_str().unwrap_or("world");
+//!     Ok(format!("Hello, {}!", name))
+//! });
+//!
+//! // Execute a script that uses the tool
+//! let result = orchestrator.execute(
+//!     r#"greet("Claude")"#,
+//!     ExecutionLimits::default()
+//! )?;
+//!
+//! assert_eq!(result.output, "Hello, Claude!");
+//! ```
+//!
+//! # Security
+//!
+//! The Rhai engine is sandboxed by default with no access to:
+//! - File system
+//! - Network
+//! - Shell commands
+//! - System time (except via provided primitives)
+//!
+//! All resource limits are enforced via [`ExecutionLimits`].
 
 use std::collections::HashMap;
 
@@ -23,17 +72,40 @@ use crate::types::{OrchestratorError, OrchestratorResult, ToolCall};
 // Type aliases for thread-safety primitives (feature-gated)
 // ============================================================================
 
+/// Thread-safe vector wrapper (native: `Arc<Mutex<Vec<T>>>`)
 #[cfg(feature = "native")]
 pub type SharedVec<T> = Arc<Mutex<Vec<T>>>;
+
+/// Thread-safe counter wrapper (native: `Arc<Mutex<usize>>`)
 #[cfg(feature = "native")]
 pub type SharedCounter = Arc<Mutex<usize>>;
+
+/// Tool executor function type (native: thread-safe `Arc<dyn Fn>`)
+///
+/// Tools receive JSON input and return either a success string or error string.
+///
+/// # Example
+///
+/// ```ignore
+/// orchestrator.register_executor("my_tool", |input: serde_json::Value| {
+///     // Process input and return result
+///     Ok("result".to_string())
+/// });
+/// ```
 #[cfg(feature = "native")]
 pub type ToolExecutor = Arc<dyn Fn(serde_json::Value) -> Result<String, String> + Send + Sync>;
 
+/// Single-threaded vector wrapper (WASM: `Rc<RefCell<Vec<T>>>`)
 #[cfg(feature = "wasm")]
 pub type SharedVec<T> = Rc<RefCell<Vec<T>>>;
+
+/// Single-threaded counter wrapper (WASM: `Rc<RefCell<usize>>`)
 #[cfg(feature = "wasm")]
 pub type SharedCounter = Rc<RefCell<usize>>;
+
+/// Tool executor function type (WASM: single-threaded `Rc<dyn Fn>`)
+///
+/// Tools receive JSON input and return either a success string or error string.
 #[cfg(feature = "wasm")]
 pub type ToolExecutor = Rc<dyn Fn(serde_json::Value) -> Result<String, String>>;
 
@@ -115,7 +187,51 @@ fn increment_counter(shared: &SharedCounter, max: usize) -> Result<(), ()> {
 // ToolOrchestrator
 // ============================================================================
 
-/// Tool orchestrator - executes Rhai scripts with tool access
+/// Tool orchestrator - executes Rhai scripts with registered tool access.
+///
+/// The `ToolOrchestrator` is the main entry point for programmatic tool calling.
+/// It manages tool registration and script execution within a sandboxed Rhai
+/// environment.
+///
+/// # Features
+///
+/// - **Tool Registration**: Register Rust functions as callable tools
+/// - **Script Execution**: Run Rhai scripts that can invoke registered tools
+/// - **Resource Limits**: Configurable limits prevent runaway execution
+/// - **Audit Trail**: All tool calls are logged with timing information
+///
+/// # Thread Safety
+///
+/// - With the `native` feature, the orchestrator is thread-safe
+/// - With the `wasm` feature, it's single-threaded for WASM compatibility
+///
+/// # Example
+///
+/// ```ignore
+/// use tool_orchestrator::{ToolOrchestrator, ExecutionLimits};
+///
+/// let mut orchestrator = ToolOrchestrator::new();
+///
+/// // Register tools
+/// orchestrator.register_executor("add", |input| {
+///     let arr = input.as_array().unwrap();
+///     let sum: i64 = arr.iter().filter_map(|v| v.as_i64()).sum();
+///     Ok(sum.to_string())
+/// });
+///
+/// // Execute script
+/// let result = orchestrator.execute(
+///     r#"
+///     let a = add([1, 2, 3]);
+///     let b = add([4, 5, 6]);
+///     `Sum: ${a} + ${b}`
+///     "#,
+///     ExecutionLimits::default()
+/// )?;
+///
+/// println!("{}", result.output);  // "Sum: 6 + 15"
+/// println!("Tool calls: {}", result.tool_calls.len());  // 2
+/// ```
 pub struct ToolOrchestrator {
     #[allow(dead_code)]
     engine: Engine,
@@ -123,7 +239,10 @@ pub struct ToolOrchestrator {
 }
 
 impl ToolOrchestrator {
-    /// Create a new tool orchestrator
+    /// Create a new tool orchestrator with default settings.
+    ///
+    /// Initializes a fresh Rhai engine with expression depth limits
+    /// and an empty tool registry.
     pub fn new() -> Self {
         let mut engine = Engine::new();
 
@@ -136,7 +255,25 @@ impl ToolOrchestrator {
         }
     }
 
-    /// Register a tool executor function (native version - thread-safe)
+    /// Register a tool executor function (native version - thread-safe).
+    ///
+    /// The executor function receives JSON input from the Rhai script and
+    /// returns either a success string or an error string.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name the tool will be callable as in Rhai scripts
+    /// * `executor` - Function that processes tool calls
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// orchestrator.register_executor("fetch_user", |input| {
+    ///     let user_id = input.as_i64().ok_or("Expected user ID")?;
+    ///     // Fetch user from database...
+    ///     Ok(format!(r#"{{"id": {}, "name": "Alice"}}"#, user_id))
+    /// });
+    /// ```
     #[cfg(feature = "native")]
     pub fn register_executor<F>(&mut self, name: impl Into<String>, executor: F)
     where
@@ -145,7 +282,9 @@ impl ToolOrchestrator {
         self.executors.insert(name.into(), Arc::new(executor));
     }
 
-    /// Register a tool executor function (WASM version - single-threaded)
+    /// Register a tool executor function (WASM version - single-threaded).
+    ///
+    /// See the native version for full documentation.
     #[cfg(feature = "wasm")]
     pub fn register_executor<F>(&mut self, name: impl Into<String>, executor: F)
     where
@@ -154,7 +293,36 @@ impl ToolOrchestrator {
         self.executors.insert(name.into(), Rc::new(executor));
     }
 
-    /// Execute a Rhai script with the registered tools
+    /// Execute a Rhai script with access to registered tools.
+    ///
+    /// Compiles and runs the provided Rhai script, making all registered
+    /// tools available as callable functions. Execution is bounded by the
+    /// provided [`ExecutionLimits`].
+    ///
+    /// # Arguments
+    ///
+    /// * `script` - Rhai source code to execute
+    /// * `limits` - Resource limits for this execution
+    ///
+    /// # Returns
+    ///
+    /// On success, returns [`OrchestratorResult`] containing:
+    /// - The script's output (final expression value)
+    /// - A log of all tool calls made
+    /// - Execution timing information
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OrchestratorError`] if:
+    /// - Script fails to compile ([`CompilationError`])
+    /// - Script throws a runtime error ([`ExecutionError`])
+    /// - Operation limit exceeded ([`MaxOperationsExceeded`])
+    /// - Time limit exceeded ([`Timeout`])
+    ///
+    /// [`CompilationError`]: OrchestratorError::CompilationError
+    /// [`ExecutionError`]: OrchestratorError::ExecutionError
+    /// [`MaxOperationsExceeded`]: OrchestratorError::MaxOperationsExceeded
+    /// [`Timeout`]: OrchestratorError::Timeout
     pub fn execute(
         &self,
         script: &str,
@@ -260,7 +428,24 @@ impl ToolOrchestrator {
         Ok(OrchestratorResult::success(output, calls, execution_time_ms))
     }
 
-    /// Get list of registered tool names
+    /// Get list of registered tool names.
+    ///
+    /// Returns the names of all tools that have been registered with
+    /// [`register_executor`]. These names are callable as functions
+    /// in Rhai scripts.
+    ///
+    /// [`register_executor`]: Self::register_executor
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// orchestrator.register_executor("tool_a", |_| Ok("a".into()));
+    /// orchestrator.register_executor("tool_b", |_| Ok("b".into()));
+    ///
+    /// let tools = orchestrator.registered_tools();
+    /// assert!(tools.contains(&"tool_a"));
+    /// assert!(tools.contains(&"tool_b"));
+    /// ```
     pub fn registered_tools(&self) -> Vec<&str> {
         self.executors.keys().map(|s| s.as_str()).collect()
     }
@@ -276,7 +461,32 @@ impl Default for ToolOrchestrator {
 // Helper functions
 // ============================================================================
 
-/// Convert Rhai Dynamic to serde_json::Value
+/// Convert Rhai [`Dynamic`] value to [`serde_json::Value`].
+///
+/// This function handles the conversion of Rhai's dynamic type system to
+/// JSON for passing data to tool executors. Supports all common Rhai types:
+///
+/// - Strings → JSON strings
+/// - Integers → JSON numbers
+/// - Floats → JSON numbers
+/// - Booleans → JSON booleans
+/// - Arrays → JSON arrays (recursive)
+/// - Maps → JSON objects (recursive)
+/// - Unit → JSON null
+/// - Other → Debug string representation
+///
+/// # Example
+///
+/// ```ignore
+/// use rhai::Dynamic;
+/// use tool_orchestrator::dynamic_to_json;
+///
+/// let d = Dynamic::from("hello");
+/// let j = dynamic_to_json(&d);
+/// assert_eq!(j, serde_json::json!("hello"));
+/// ```
+///
+/// [`Dynamic`]: rhai::Dynamic
 pub fn dynamic_to_json(value: &rhai::Dynamic) -> serde_json::Value {
     if value.is_string() {
         serde_json::Value::String(value.clone().into_string().unwrap_or_default())
