@@ -412,4 +412,200 @@ mod tests {
         assert!(result.output.contains("Sum1: 6"));
         assert!(result.output.contains("Sum2: 15"));
     }
+
+    #[test]
+    fn test_tool_error_handling() {
+        let mut orchestrator = ToolOrchestrator::new();
+        orchestrator.register_executor("fail_tool", |_| Err("Intentional failure".to_string()));
+
+        let result = orchestrator
+            .execute(r#"fail_tool("test")"#, ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success); // Script completes, tool error is in output
+        assert!(result.output.contains("Tool error"));
+        assert_eq!(result.tool_calls.len(), 1);
+        assert!(!result.tool_calls[0].success);
+    }
+
+    #[test]
+    fn test_max_tool_calls_limit() {
+        let mut orchestrator = ToolOrchestrator::new();
+        orchestrator.register_executor("count", |_| Ok("1".to_string()));
+
+        let limits = ExecutionLimits::default().with_max_tool_calls(3);
+        // Return the 4th call result directly so we can see the error
+        let script = r#"
+            let a = count("1");
+            let b = count("2");
+            let c = count("3");
+            count("4")
+        "#;
+
+        let result = orchestrator.execute(script, limits).unwrap();
+
+        // Fourth call should return error message instead of executing
+        assert!(
+            result.output.contains("Maximum tool calls"),
+            "Expected error message about max tool calls, got: {}",
+            result.output
+        );
+        // Only 3 calls should be recorded (the 4th was blocked)
+        assert_eq!(result.tool_calls.len(), 3);
+    }
+
+    #[test]
+    fn test_tool_with_map_input() {
+        let mut orchestrator = ToolOrchestrator::new();
+        orchestrator.register_executor("get_value", |input| {
+            if let Some(obj) = input.as_object() {
+                if let Some(key) = obj.get("key").and_then(|v| v.as_str()) {
+                    Ok(format!("Got key: {}", key))
+                } else {
+                    Err("Missing key field".to_string())
+                }
+            } else {
+                Err("Expected object".to_string())
+            }
+        });
+
+        let result = orchestrator
+            .execute(r#"get_value(#{ key: "test_key" })"#, ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.output, "Got key: test_key");
+    }
+
+    #[test]
+    fn test_loop_with_tool_calls() {
+        let mut orchestrator = ToolOrchestrator::new();
+        orchestrator.register_executor("double", |input| {
+            let n = input.as_i64().unwrap_or(0);
+            Ok((n * 2).to_string())
+        });
+
+        let script = r#"
+            let results = [];
+            for i in 1..4 {
+                results.push(double(i));
+            }
+            results
+        "#;
+
+        let result = orchestrator
+            .execute(script, ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.tool_calls.len(), 3);
+    }
+
+    #[test]
+    fn test_conditional_tool_calls() {
+        let mut orchestrator = ToolOrchestrator::new();
+        orchestrator.register_executor("check", |input| {
+            let n = input.as_i64().unwrap_or(0);
+            Ok(if n > 5 { "big" } else { "small" }.to_string())
+        });
+
+        let script = r#"
+            let x = 10;
+            if x > 5 {
+                check(x)
+            } else {
+                "skipped"
+            }
+        "#;
+
+        let result = orchestrator
+            .execute(script, ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.output, "big");
+        assert_eq!(result.tool_calls.len(), 1);
+    }
+
+    #[test]
+    fn test_empty_script() {
+        let orchestrator = ToolOrchestrator::new();
+        let result = orchestrator
+            .execute("", ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        assert!(result.output.is_empty());
+    }
+
+    #[test]
+    fn test_unit_return() {
+        let orchestrator = ToolOrchestrator::new();
+        let result = orchestrator
+            .execute("let x = 5;", ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        assert!(result.output.is_empty()); // Unit type returns empty string
+    }
+
+    #[test]
+    fn test_dynamic_to_json_types() {
+        // Test various Rhai Dynamic types convert to JSON correctly
+        use rhai::Dynamic;
+
+        // String
+        let d = Dynamic::from("hello".to_string());
+        let j = dynamic_to_json(&d);
+        assert_eq!(j, serde_json::json!("hello"));
+
+        // Integer
+        let d = Dynamic::from(42_i64);
+        let j = dynamic_to_json(&d);
+        assert_eq!(j, serde_json::json!(42));
+
+        // Float
+        let d = Dynamic::from(3.14_f64);
+        let j = dynamic_to_json(&d);
+        assert!(j.as_f64().unwrap() - 3.14 < 0.001);
+
+        // Boolean
+        let d = Dynamic::from(true);
+        let j = dynamic_to_json(&d);
+        assert_eq!(j, serde_json::json!(true));
+
+        // Unit (null)
+        let d = Dynamic::UNIT;
+        let j = dynamic_to_json(&d);
+        assert_eq!(j, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_execution_time_recorded() {
+        let orchestrator = ToolOrchestrator::new();
+        let result = orchestrator
+            .execute("let sum = 0; for i in 0..100 { sum += i; } sum", ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        // execution_time_ms is always recorded (u64 is always >= 0, but we verify a result exists)
+        assert!(result.execution_time_ms < 10000); // Should complete in under 10 seconds
+    }
+
+    #[test]
+    fn test_tool_call_duration_recorded() {
+        let mut orchestrator = ToolOrchestrator::new();
+        orchestrator.register_executor("slow_tool", |_| {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            Ok("done".to_string())
+        });
+
+        let result = orchestrator
+            .execute(r#"slow_tool("test")"#, ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.tool_calls.len(), 1);
+        assert!(result.tool_calls[0].duration_ms >= 10);
+    }
 }

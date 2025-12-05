@@ -11,11 +11,6 @@ repository = "https://github.com/Brainwires/tool-orchestrator"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[[bin]]
-name = "tool-orchestrator-mcp"
-path = "src/bin/mcp_server.rs"
-required-features = ["mcp-server"]
-
 [features]
 default = ["native"]
 # Native mode: thread-safe with Arc/Mutex and std::time
@@ -30,8 +25,6 @@ wasm = [
     "getrandom/js",
     "console_error_panic_hook",
 ]
-# MCP stdio server (uses official rmcp SDK)
-mcp-server = ["native", "rmcp", "tokio", "tracing-subscriber", "schemars"]
 
 [dependencies]
 # Embedded scripting engine (pure Rust)
@@ -57,14 +50,7 @@ instant = { version = "0.1", features = ["wasm-bindgen"], optional = true }
 getrandom = { version = "0.2", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 
-# === MCP server dependencies ===
-rmcp = { version = "0.8", features = ["server", "transport-io", "macros"], optional = true }
-tokio = { version = "1", features = ["full"], optional = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
-schemars = { version = "0.8", optional = true }
-
 [dev-dependencies]
-tokio-test = "0.4"
 wasm-bindgen-test = "0.3"
 
 [profile.release]

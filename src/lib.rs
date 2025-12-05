@@ -10,7 +10,6 @@
 //!
 //! - **`native`** (default) - Thread-safe Rust library with `Arc`/`Mutex`
 //! - **`wasm`** - WebAssembly bindings for browser/Node.js via `wasm-bindgen`
-//! - **`mcp-server`** - stdio-based MCP server binary
 //!
 //! ## Benefits
 //!
@@ -71,7 +70,3 @@ pub mod wasm;
 
 #[cfg(feature = "wasm")]
 pub use wasm::{ExecutionLimits as WasmExecutionLimits, WasmOrchestrator};
-
-// MCP module (only when mcp-server feature is enabled)
-#[cfg(feature = "mcp-server")]
-pub mod mcp;

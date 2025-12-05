@@ -13,13 +13,12 @@ Anthropic's programmatic tool calling requires Claude + their Python sandbox. Th
 
 ## Multi-Target Architecture
 
-This crate produces **three outputs** from a single codebase:
+This crate produces **two outputs** from a single codebase:
 
 | Target | Description | Use Case |
 |--------|-------------|----------|
 | **Rust Library** | Native Rust crate | CLI tools, server-side apps |
 | **WASM Package** | Browser/Node.js module | Web apps, npm packages |
-| **MCP Server** | stdio-based Model Context Protocol server | Easy integration with AI assistants |
 
 ## Benefits
 
@@ -76,16 +75,6 @@ wasm-pack build --target web --features wasm --no-default-features
 wasm-pack build --target nodejs --features wasm --no-default-features
 
 # The package is generated in ./pkg/
-```
-
-### MCP Server
-
-```bash
-# Build the MCP server binary
-cargo build --release --features mcp-server --bin tool-orchestrator-mcp
-
-# Run the server (uses stdio transport)
-./target/release/tool-orchestrator-mcp
 ```
 
 ## Usage
@@ -157,53 +146,6 @@ console.log(result);
 // { success: true, output: "Current weather: ...", tool_calls: [...] }
 ```
 
-### MCP Server
-
-The MCP server exposes these tools via the Model Context Protocol:
-
-| Tool | Description |
-|------|-------------|
-| `execute_script` | Execute a Rhai script with registered tools |
-| `register_tool` | Register a shell command as a callable tool |
-| `unregister_tool` | Remove a registered tool |
-| `list_tools` | List all registered shell tools |
-
-#### Claude Desktop Configuration
-
-Add to `~/.config/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "tool-orchestrator": {
-      "command": "/path/to/tool-orchestrator-mcp"
-    }
-  }
-}
-```
-
-#### Example MCP Usage
-
-```json
-// Register a shell tool
-{
-  "name": "register_tool",
-  "arguments": {
-    "name": "list_files",
-    "description": "List files in a directory",
-    "command": "ls -la $input"
-  }
-}
-
-// Execute a script using registered tools
-{
-  "name": "execute_script",
-  "arguments": {
-    "script": "let files = list_files(\".\"); `Files: ${files}`"
-  }
-}
-```
-
 ## Safety & Sandboxing
 
 The orchestrator includes built-in limits to prevent runaway scripts:
@@ -271,7 +213,63 @@ let files = list_directory("src");
 |---------|---------|-------------|
 | `native` | Yes | Thread-safe with `Arc<Mutex>` (for native Rust) |
 | `wasm` | No | Single-threaded with `Rc<RefCell>` (for browser/Node.js) |
-| `mcp-server` | No | MCP stdio server binary using `rmcp` SDK |
+
+## Testing
+
+### Native Tests
+
+```bash
+# Run all native tests
+cargo test
+
+# Run with verbose output
+cargo test -- --nocapture
+```
+
+### WASM Tests
+
+WASM tests require `wasm-pack`. Install it with:
+
+```bash
+cargo install wasm-pack
+```
+
+Run WASM tests:
+
+```bash
+# Test with Node.js (fastest)
+wasm-pack test --node --features wasm --no-default-features
+
+# Test with headless Chrome
+wasm-pack test --headless --chrome --features wasm --no-default-features
+
+# Test with headless Firefox
+wasm-pack test --headless --firefox --features wasm --no-default-features
+```
+
+### Test Coverage
+
+The test suite includes:
+
+**Native tests (25 tests)**
+- Orchestrator creation and configuration
+- Tool registration and execution
+- Script compilation and execution
+- Error handling (compilation errors, tool errors, runtime errors)
+- Execution limits (max operations, max tool calls, timeout)
+- JSON type conversion
+- Loop and conditional execution
+- Timing and metrics recording
+
+**WASM tests (25 tests)**
+- ExecutionLimits constructors and setters
+- WasmOrchestrator creation
+- Script execution (simple, loops, conditionals, functions)
+- Tool registration and execution
+- JavaScript callback integration
+- Error handling (compilation, runtime, tool errors)
+- Max operations and tool call limits
+- Complex data structures (arrays, maps, nested)
 
 ## Integration Example
 
@@ -299,7 +297,7 @@ When the LLM needs to perform multi-step operations, it writes a Rhai script ins
 | Models | Claude 4.5 only | Any LLM |
 | Runtime | Server-side | Client-side |
 | Dependencies | API call | Pure Rust, no runtime |
-| Targets | Python only | Rust, WASM, MCP |
+| Targets | Python only | Rust + WASM |
 
 ## License
 
