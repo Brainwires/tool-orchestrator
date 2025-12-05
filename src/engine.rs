@@ -69,6 +69,16 @@ use crate::sandbox::ExecutionLimits;
 use crate::types::{OrchestratorError, OrchestratorResult, ToolCall};
 
 // ============================================================================
+// Engine Configuration Constants
+// ============================================================================
+
+/// Maximum expression nesting depth (prevents stack overflow from deeply nested expressions)
+const MAX_EXPR_DEPTH: usize = 64;
+
+/// Maximum function call nesting depth (prevents stack overflow from deep recursion)
+const MAX_CALL_DEPTH: usize = 64;
+
+// ============================================================================
 // Type aliases for thread-safety primitives (feature-gated)
 // ============================================================================
 
@@ -112,6 +122,10 @@ pub type ToolExecutor = Rc<dyn Fn(serde_json::Value) -> Result<String, String>>;
 // ============================================================================
 // Helper functions for shared state (feature-gated)
 // ============================================================================
+//
+// These functions abstract over the difference between native (Arc/Mutex)
+// and WASM (Rc/RefCell) shared state primitives, allowing the main code
+// to be feature-agnostic.
 
 #[cfg(feature = "native")]
 fn new_shared_vec<T>() -> SharedVec<T> {
@@ -246,8 +260,8 @@ impl ToolOrchestrator {
     pub fn new() -> Self {
         let mut engine = Engine::new();
 
-        // Disable unsafe operations
-        engine.set_max_expr_depths(64, 64);
+        // Limit expression nesting depth to prevent stack overflow
+        engine.set_max_expr_depths(MAX_EXPR_DEPTH, MAX_CALL_DEPTH);
 
         Self {
             engine,
@@ -335,12 +349,12 @@ impl ToolOrchestrator {
         // Create a new engine with limits for this execution
         let mut engine = Engine::new();
 
-        // Apply limits
+        // Apply resource limits from ExecutionLimits
         engine.set_max_operations(limits.max_operations);
         engine.set_max_string_size(limits.max_string_size);
         engine.set_max_array_size(limits.max_array_size);
         engine.set_max_map_size(limits.max_map_size);
-        engine.set_max_expr_depths(64, 64);
+        engine.set_max_expr_depths(MAX_EXPR_DEPTH, MAX_CALL_DEPTH);
 
         // Set up real-time timeout via on_progress callback
         let timeout_ms = limits.timeout_ms;

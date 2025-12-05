@@ -11,6 +11,17 @@ use wasm_bindgen::prelude::*;
 
 use crate::engine::dynamic_to_json;
 use crate::sandbox::ExecutionLimits as CoreExecutionLimits;
+
+// ============================================================================
+// Engine Configuration Constants
+// ============================================================================
+
+/// Maximum expression nesting depth (prevents stack overflow from deeply nested expressions)
+const MAX_EXPR_DEPTH: usize = 64;
+
+/// Maximum function call nesting depth (prevents stack overflow from deep recursion)
+const MAX_CALL_DEPTH: usize = 64;
+
 use crate::types::{OrchestratorResult as CoreOrchestratorResult, ToolCall as CoreToolCall};
 
 // ============================================================================
@@ -176,12 +187,12 @@ impl WasmOrchestrator {
         // Create a new Rhai engine with limits
         let mut engine = rhai::Engine::new();
 
-        // Apply limits
+        // Apply resource limits from ExecutionLimits
         engine.set_max_operations(limits.inner.max_operations);
         engine.set_max_string_size(limits.inner.max_string_size);
         engine.set_max_array_size(limits.inner.max_array_size);
         engine.set_max_map_size(limits.inner.max_map_size);
-        engine.set_max_expr_depths(64, 64);
+        engine.set_max_expr_depths(MAX_EXPR_DEPTH, MAX_CALL_DEPTH);
 
         // Set up real-time timeout via on_progress callback
         let timeout_ms = limits.inner.timeout_ms;

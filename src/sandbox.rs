@@ -34,6 +34,58 @@
 
 use serde::{Deserialize, Serialize};
 
+// =============================================================================
+// Default Limit Constants
+// =============================================================================
+
+/// Default maximum Rhai operations before termination (prevents infinite loops)
+pub const DEFAULT_MAX_OPERATIONS: u64 = 100_000;
+
+/// Default maximum tool calls per script execution
+pub const DEFAULT_MAX_TOOL_CALLS: usize = 50;
+
+/// Default timeout in milliseconds (30 seconds)
+pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+
+/// Default maximum string size in bytes (10 MB)
+pub const DEFAULT_MAX_STRING_SIZE: usize = 10_000_000;
+
+/// Default maximum array size (number of elements)
+pub const DEFAULT_MAX_ARRAY_SIZE: usize = 10_000;
+
+/// Default maximum map size (number of key-value pairs)
+pub const DEFAULT_MAX_MAP_SIZE: usize = 1_000;
+
+// =============================================================================
+// Quick Profile Constants
+// =============================================================================
+
+/// Quick profile: maximum operations (10,000)
+pub const QUICK_MAX_OPERATIONS: u64 = 10_000;
+
+/// Quick profile: maximum tool calls (10)
+pub const QUICK_MAX_TOOL_CALLS: usize = 10;
+
+/// Quick profile: timeout in milliseconds (5 seconds)
+pub const QUICK_TIMEOUT_MS: u64 = 5_000;
+
+// =============================================================================
+// Extended Profile Constants
+// =============================================================================
+
+/// Extended profile: maximum operations (500,000)
+pub const EXTENDED_MAX_OPERATIONS: u64 = 500_000;
+
+/// Extended profile: maximum tool calls (100)
+pub const EXTENDED_MAX_TOOL_CALLS: usize = 100;
+
+/// Extended profile: timeout in milliseconds (2 minutes)
+pub const EXTENDED_TIMEOUT_MS: u64 = 120_000;
+
+// =============================================================================
+// ExecutionLimits
+// =============================================================================
+
 /// Limits for safe script execution.
 ///
 /// Configures resource bounds to prevent runaway scripts from consuming
@@ -69,12 +121,12 @@ pub struct ExecutionLimits {
 impl Default for ExecutionLimits {
     fn default() -> Self {
         Self {
-            max_operations: 100_000,
-            max_tool_calls: 50,
-            timeout_ms: 30_000, // 30 seconds
-            max_string_size: 10_000_000, // 10MB
-            max_array_size: 10_000,
-            max_map_size: 1_000,
+            max_operations: DEFAULT_MAX_OPERATIONS,
+            max_tool_calls: DEFAULT_MAX_TOOL_CALLS,
+            timeout_ms: DEFAULT_TIMEOUT_MS,
+            max_string_size: DEFAULT_MAX_STRING_SIZE,
+            max_array_size: DEFAULT_MAX_ARRAY_SIZE,
+            max_map_size: DEFAULT_MAX_MAP_SIZE,
         }
     }
 }
@@ -102,9 +154,9 @@ impl ExecutionLimits {
     /// ```
     pub fn quick() -> Self {
         Self {
-            max_operations: 10_000,
-            max_tool_calls: 10,
-            timeout_ms: 5_000,
+            max_operations: QUICK_MAX_OPERATIONS,
+            max_tool_calls: QUICK_MAX_TOOL_CALLS,
+            timeout_ms: QUICK_TIMEOUT_MS,
             ..Default::default()
         }
     }
@@ -124,9 +176,9 @@ impl ExecutionLimits {
     /// ```
     pub fn extended() -> Self {
         Self {
-            max_operations: 500_000,
-            max_tool_calls: 100,
-            timeout_ms: 120_000, // 2 minutes
+            max_operations: EXTENDED_MAX_OPERATIONS,
+            max_tool_calls: EXTENDED_MAX_TOOL_CALLS,
+            timeout_ms: EXTENDED_TIMEOUT_MS,
             ..Default::default()
         }
     }
@@ -235,23 +287,23 @@ mod tests {
     #[test]
     fn test_default_limits() {
         let limits = ExecutionLimits::default();
-        assert_eq!(limits.max_operations, 100_000);
-        assert_eq!(limits.max_tool_calls, 50);
-        assert_eq!(limits.timeout_ms, 30_000);
+        assert_eq!(limits.max_operations, DEFAULT_MAX_OPERATIONS);
+        assert_eq!(limits.max_tool_calls, DEFAULT_MAX_TOOL_CALLS);
+        assert_eq!(limits.timeout_ms, DEFAULT_TIMEOUT_MS);
     }
 
     #[test]
     fn test_quick_limits() {
         let limits = ExecutionLimits::quick();
-        assert_eq!(limits.max_operations, 10_000);
-        assert_eq!(limits.max_tool_calls, 10);
+        assert_eq!(limits.max_operations, QUICK_MAX_OPERATIONS);
+        assert_eq!(limits.max_tool_calls, QUICK_MAX_TOOL_CALLS);
     }
 
     #[test]
     fn test_extended_limits() {
         let limits = ExecutionLimits::extended();
-        assert_eq!(limits.max_operations, 500_000);
-        assert_eq!(limits.max_tool_calls, 100);
+        assert_eq!(limits.max_operations, EXTENDED_MAX_OPERATIONS);
+        assert_eq!(limits.max_tool_calls, EXTENDED_MAX_TOOL_CALLS);
     }
 
     #[test]
@@ -284,7 +336,7 @@ mod tests {
         let limits = ExecutionLimits::default().with_max_string_size(5_000_000);
         assert_eq!(limits.max_string_size, 5_000_000);
         // Other values should remain at defaults
-        assert_eq!(limits.max_operations, 100_000);
+        assert_eq!(limits.max_operations, DEFAULT_MAX_OPERATIONS);
     }
 
     #[test]
@@ -292,7 +344,7 @@ mod tests {
         let limits = ExecutionLimits::default().with_max_array_size(5_000);
         assert_eq!(limits.max_array_size, 5_000);
         // Other values should remain at defaults
-        assert_eq!(limits.max_operations, 100_000);
+        assert_eq!(limits.max_operations, DEFAULT_MAX_OPERATIONS);
     }
 
     #[test]
@@ -300,7 +352,7 @@ mod tests {
         let limits = ExecutionLimits::default().with_max_map_size(500);
         assert_eq!(limits.max_map_size, 500);
         // Other values should remain at defaults
-        assert_eq!(limits.max_operations, 100_000);
+        assert_eq!(limits.max_operations, DEFAULT_MAX_OPERATIONS);
     }
 
     #[test]

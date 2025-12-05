@@ -61,7 +61,15 @@ pub mod types;
 
 // Re-export core types
 pub use engine::{dynamic_to_json, ToolExecutor, ToolOrchestrator};
-pub use sandbox::ExecutionLimits;
+pub use sandbox::{
+    ExecutionLimits,
+    // Default limit constants
+    DEFAULT_MAX_ARRAY_SIZE, DEFAULT_MAX_MAP_SIZE, DEFAULT_MAX_OPERATIONS, DEFAULT_MAX_STRING_SIZE,
+    DEFAULT_MAX_TOOL_CALLS, DEFAULT_TIMEOUT_MS,
+    // Profile constants
+    EXTENDED_MAX_OPERATIONS, EXTENDED_MAX_TOOL_CALLS, EXTENDED_TIMEOUT_MS, QUICK_MAX_OPERATIONS,
+    QUICK_MAX_TOOL_CALLS, QUICK_TIMEOUT_MS,
+};
 pub use types::{OrchestratorError, OrchestratorResult, ToolCall};
 
 // WASM module (only when wasm feature is enabled)
