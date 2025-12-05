@@ -83,6 +83,18 @@ fn main() {
 
     // Script that analyzes the current directory
     let script = r#"
+        // Helper function to join array elements with a separator
+        fn join_array(arr, sep) {
+            let result = "";
+            for i in 0..arr.len() {
+                if i > 0 {
+                    result += sep;
+                }
+                result += arr[i];
+            }
+            result
+        }
+
         // List all files in the current directory
         let files = list_files(".");
         let lines = files.split("\n");
@@ -93,20 +105,25 @@ fn main() {
 
         for line in lines {
             if line.contains("(dir)") {
-                // It's a directory
-                let name = line.split("/").next();
-                if name != () && !name.starts_with(".") {
-                    directories.push(name);
+                // It's a directory - extract name before "/"
+                let name_parts = line.split("/");
+                if name_parts.len() > 0 {
+                    let name = name_parts[0];
+                    if name != () && !name.starts_with(".") {
+                        directories.push(name);
+                    }
                 }
             } else if line.ends_with(".rs") || line.contains(".rs (") {
                 // It's a Rust file
                 rust_files.push(line);
 
                 // Extract size from "filename (123b)" format
-                let size_part = line.split("(").last();
-                if size_part != () {
-                    let size_str = size_part.split("b").next();
-                    if size_str != () {
+                let size_parts = line.split("(");
+                if size_parts.len() > 1 {
+                    let size_part = size_parts[size_parts.len() - 1];
+                    let size_str_parts = size_part.split("b");
+                    if size_str_parts.len() > 0 {
+                        let size_str = size_str_parts[0];
                         let size = size_str.parse_int();
                         if size != () {
                             total_size += size;
@@ -116,6 +133,10 @@ fn main() {
             }
         }
 
+        // Build lists
+        let rust_files_list = join_array(rust_files, "\n");
+        let directories_list = join_array(directories, ", ");
+
         // Build summary
         `Directory Analysis:
 - Total items: ${lines.len()}
@@ -124,10 +145,10 @@ fn main() {
 - Total Rust code size: ${total_size} bytes
 
 Rust files found:
-${rust_files.join("\n")}
+${rust_files_list}
 
 Subdirectories:
-${directories.join(", ")}`
+${directories_list}`
     "#;
 
     println!("Analyzing current directory...\n");

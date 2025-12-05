@@ -184,6 +184,7 @@ fn increment_counter(shared: &SharedCounter, max: usize) -> Result<(), ()> {
         return Err(());
     }
     *c += 1;
+    drop(c); // Release lock early to avoid unnecessary contention
     Ok(())
 }
 
@@ -257,6 +258,7 @@ impl ToolOrchestrator {
     ///
     /// Initializes a fresh Rhai engine with expression depth limits
     /// and an empty tool registry.
+    #[must_use]
     pub fn new() -> Self {
         let mut engine = Engine::new();
 
@@ -360,7 +362,9 @@ impl ToolOrchestrator {
         let timeout_ms = limits.timeout_ms;
         let progress_start = Instant::now();
         engine.on_progress(move |_ops| {
-            if progress_start.elapsed().as_millis() as u64 > timeout_ms {
+            // Use saturating conversion - elapsed time exceeding u64::MAX is always a timeout
+            let elapsed = u64::try_from(progress_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            if elapsed > timeout_ms {
                 Some(rhai::Dynamic::from("timeout"))
             } else {
                 None
@@ -381,7 +385,7 @@ impl ToolOrchestrator {
 
                 // Check call limit
                 if increment_counter(&count, max_calls).is_err() {
-                    return format!("ERROR: Maximum tool calls ({}) exceeded", max_calls);
+                    return format!("ERROR: Maximum tool calls ({max_calls}) exceeded");
                 }
 
                 // Convert Dynamic to JSON
@@ -390,11 +394,11 @@ impl ToolOrchestrator {
                 // Execute the tool
                 let (output, success) = match exec(json_input.clone()) {
                     Ok(result) => (result, true),
-                    Err(e) => (format!("Tool error: {}", e), false),
+                    Err(e) => (format!("Tool error: {e}"), false),
                 };
 
-                // Record the call
-                let duration_ms = call_start.elapsed().as_millis() as u64;
+                // Record the call (saturate to u64::MAX for extremely long-running calls)
+                let duration_ms = u64::try_from(call_start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let call = ToolCall::new(
                     tool_name.clone(),
                     json_input,
@@ -427,7 +431,7 @@ impl ToolOrchestrator {
                 _ => OrchestratorError::ExecutionError(e.to_string()),
             })?;
 
-        let execution_time_ms = start_time.elapsed().as_millis() as u64;
+        let execution_time_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
 
         // Convert result to string
         let output = if result.is_string() {
@@ -435,7 +439,7 @@ impl ToolOrchestrator {
         } else if result.is_unit() {
             String::new()
         } else {
-            format!("{:?}", result)
+            format!("{result:?}")
         };
 
         let calls = lock_vec(&tool_calls);
@@ -460,8 +464,9 @@ impl ToolOrchestrator {
     /// assert!(tools.contains(&"tool_a"));
     /// assert!(tools.contains(&"tool_b"));
     /// ```
+    #[must_use]
     pub fn registered_tools(&self) -> Vec<&str> {
-        self.executors.keys().map(|s| s.as_str()).collect()
+        self.executors.keys().map(String::as_str).collect()
     }
 }
 
@@ -516,14 +521,14 @@ pub fn dynamic_to_json(value: &rhai::Dynamic) -> serde_json::Value {
     } else if value.is_map() {
         let map: rhai::Map = value.clone().cast();
         let mut json_map = serde_json::Map::new();
-        for (k, v) in map.iter() {
+        for (k, v) in &map {
             json_map.insert(k.to_string(), dynamic_to_json(v));
         }
         serde_json::Value::Object(json_map)
     } else if value.is_unit() {
         serde_json::Value::Null
     } else {
-        serde_json::Value::String(format!("{:?}", value))
+        serde_json::Value::String(format!("{value:?}"))
     }
 }
 

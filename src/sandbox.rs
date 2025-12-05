@@ -102,7 +102,7 @@ pub const EXTENDED_TIMEOUT_MS: u64 = 120_000;
 ///
 /// This struct derives `Serialize` and `Deserialize` for easy configuration
 /// storage and transmission (e.g., in JSON config files or API requests).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ExecutionLimits {
     /// Maximum number of operations (prevents infinite loops)
     pub max_operations: u64,
@@ -135,6 +135,7 @@ impl ExecutionLimits {
     /// Create new limits with all defaults.
     ///
     /// Equivalent to [`ExecutionLimits::default()`].
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -152,6 +153,7 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::quick();
     /// let result = orchestrator.execute("1 + 1", limits)?;
     /// ```
+    #[must_use]
     pub fn quick() -> Self {
         Self {
             max_operations: QUICK_MAX_OPERATIONS,
@@ -174,6 +176,7 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::extended();
     /// let result = orchestrator.execute(complex_script, limits)?;
     /// ```
+    #[must_use]
     pub fn extended() -> Self {
         Self {
             max_operations: EXTENDED_MAX_OPERATIONS,
@@ -194,7 +197,8 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::default()
     ///     .with_max_operations(50_000);
     /// ```
-    pub fn with_max_operations(mut self, max: u64) -> Self {
+    #[must_use]
+    pub const fn with_max_operations(mut self, max: u64) -> Self {
         self.max_operations = max;
         self
     }
@@ -210,7 +214,8 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::default()
     ///     .with_max_tool_calls(25);
     /// ```
-    pub fn with_max_tool_calls(mut self, max: usize) -> Self {
+    #[must_use]
+    pub const fn with_max_tool_calls(mut self, max: usize) -> Self {
         self.max_tool_calls = max;
         self
     }
@@ -226,7 +231,8 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::default()
     ///     .with_timeout_ms(10_000); // 10 seconds
     /// ```
-    pub fn with_timeout_ms(mut self, timeout: u64) -> Self {
+    #[must_use]
+    pub const fn with_timeout_ms(mut self, timeout: u64) -> Self {
         self.timeout_ms = timeout;
         self
     }
@@ -242,7 +248,8 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::default()
     ///     .with_max_string_size(5_000_000); // 5MB
     /// ```
-    pub fn with_max_string_size(mut self, size: usize) -> Self {
+    #[must_use]
+    pub const fn with_max_string_size(mut self, size: usize) -> Self {
         self.max_string_size = size;
         self
     }
@@ -258,7 +265,8 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::default()
     ///     .with_max_array_size(5_000);
     /// ```
-    pub fn with_max_array_size(mut self, size: usize) -> Self {
+    #[must_use]
+    pub const fn with_max_array_size(mut self, size: usize) -> Self {
         self.max_array_size = size;
         self
     }
@@ -274,7 +282,8 @@ impl ExecutionLimits {
     /// let limits = ExecutionLimits::default()
     ///     .with_max_map_size(500);
     /// ```
-    pub fn with_max_map_size(mut self, size: usize) -> Self {
+    #[must_use]
+    pub const fn with_max_map_size(mut self, size: usize) -> Self {
         self.max_map_size = size;
         self
     }

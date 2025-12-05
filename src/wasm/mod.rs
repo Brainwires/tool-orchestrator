@@ -37,86 +37,104 @@ pub struct ExecutionLimits {
 
 #[wasm_bindgen]
 impl ExecutionLimits {
-    /// Create new execution limits with defaults
+    /// Create new execution limits with defaults.
     #[wasm_bindgen(constructor)]
+    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: CoreExecutionLimits::default(),
         }
     }
 
-    /// Create quick execution limits for simple scripts
+    /// Create quick execution limits for simple scripts.
     #[wasm_bindgen]
+    #[must_use]
     pub fn quick() -> Self {
         Self {
             inner: CoreExecutionLimits::quick(),
         }
     }
 
-    /// Create extended limits for complex orchestration
+    /// Create extended limits for complex orchestration.
     #[wasm_bindgen]
+    #[must_use]
     pub fn extended() -> Self {
         Self {
             inner: CoreExecutionLimits::extended(),
         }
     }
 
-    /// Get max operations
+    /// Get max operations.
     #[wasm_bindgen(getter)]
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn max_operations(&self) -> u64 {
         self.inner.max_operations
     }
 
-    /// Set max operations
+    /// Set max operations.
     #[wasm_bindgen(setter)]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn set_max_operations(&mut self, value: u64) {
         self.inner.max_operations = value;
     }
 
-    /// Get max tool calls
+    /// Get max tool calls.
     #[wasm_bindgen(getter)]
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn max_tool_calls(&self) -> usize {
         self.inner.max_tool_calls
     }
 
-    /// Set max tool calls
+    /// Set max tool calls.
     #[wasm_bindgen(setter)]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn set_max_tool_calls(&mut self, value: usize) {
         self.inner.max_tool_calls = value;
     }
 
-    /// Get timeout in milliseconds
+    /// Get timeout in milliseconds.
     #[wasm_bindgen(getter)]
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn timeout_ms(&self) -> u64 {
         self.inner.timeout_ms
     }
 
-    /// Set timeout in milliseconds
+    /// Set timeout in milliseconds.
     #[wasm_bindgen(setter)]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn set_timeout_ms(&mut self, value: u64) {
         self.inner.timeout_ms = value;
     }
 
-    /// Get max string size
+    /// Get max string size.
     #[wasm_bindgen(getter)]
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn max_string_size(&self) -> usize {
         self.inner.max_string_size
     }
 
-    /// Set max string size
+    /// Set max string size.
     #[wasm_bindgen(setter)]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn set_max_string_size(&mut self, value: usize) {
         self.inner.max_string_size = value;
     }
 
-    /// Get max array size
+    /// Get max array size.
     #[wasm_bindgen(getter)]
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn max_array_size(&self) -> usize {
         self.inner.max_array_size
     }
 
-    /// Set max array size
+    /// Set max array size.
     #[wasm_bindgen(setter)]
+    #[allow(clippy::missing_const_for_fn)] // wasm_bindgen doesn't support const fn
     pub fn set_max_array_size(&mut self, value: usize) {
         self.inner.max_array_size = value;
     }
@@ -135,9 +153,9 @@ impl Default for ExecutionLimits {
 /// Tool executor function type (JavaScript callback)
 type JsToolExecutor = Rc<RefCell<js_sys::Function>>;
 
-/// WASM-compatible tool orchestrator
+/// WASM-compatible tool orchestrator.
 ///
-/// This wraps the core ToolOrchestrator and provides JavaScript-friendly bindings
+/// This wraps the core `ToolOrchestrator` and provides JavaScript-friendly bindings
 /// for registering tools and executing scripts.
 #[wasm_bindgen]
 pub struct WasmOrchestrator {
@@ -147,8 +165,9 @@ pub struct WasmOrchestrator {
 
 #[wasm_bindgen]
 impl WasmOrchestrator {
-    /// Create a new WASM orchestrator
+    /// Create a new WASM orchestrator.
     #[wasm_bindgen(constructor)]
+    #[must_use]
     pub fn new() -> Self {
         // Set up panic hook for better error messages
         console_error_panic_hook::set_once();
@@ -167,16 +186,22 @@ impl WasmOrchestrator {
             .insert(name.to_string(), Rc::new(RefCell::new(callback)));
     }
 
-    /// Get list of registered tool names
+    /// Get list of registered tool names.
     #[wasm_bindgen]
+    #[must_use]
     pub fn registered_tools(&self) -> Vec<String> {
         self.js_executors.keys().cloned().collect()
     }
 
-    /// Execute a Rhai script with the registered tools
+    /// Execute a Rhai script with the registered tools.
     ///
-    /// Returns a JsValue containing the OrchestratorResult
+    /// Returns a `JsValue` containing the `OrchestratorResult`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `JsValue` error if serialization fails.
     #[wasm_bindgen]
+    #[allow(clippy::too_many_lines)] // Execute function is inherently complex
     pub fn execute(&self, script: &str, limits: &ExecutionLimits) -> Result<JsValue, JsValue> {
         use web_time::Instant;
 
@@ -198,7 +223,9 @@ impl WasmOrchestrator {
         let timeout_ms = limits.inner.timeout_ms;
         let progress_start = Instant::now();
         engine.on_progress(move |_ops| {
-            if progress_start.elapsed().as_millis() as u64 > timeout_ms {
+            // Use saturating conversion - elapsed time exceeding u64::MAX is always a timeout
+            let elapsed = u64::try_from(progress_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            if elapsed > timeout_ms {
                 Some(rhai::Dynamic::from("timeout"))
             } else {
                 None
@@ -220,7 +247,7 @@ impl WasmOrchestrator {
                 {
                     let mut c = count.borrow_mut();
                     if *c >= max_calls {
-                        return format!("ERROR: Maximum tool calls ({}) exceeded", max_calls);
+                        return format!("ERROR: Maximum tool calls ({max_calls}) exceeded");
                     }
                     *c += 1;
                 }
@@ -234,26 +261,21 @@ impl WasmOrchestrator {
                 let js_input = JsValue::from_str(&json_str);
 
                 let (output, success) = match callback.call1(&JsValue::NULL, &js_input) {
-                    Ok(result) => {
-                        if let Some(s) = result.as_string() {
-                            (s, true)
-                        } else {
-                            ("Tool returned non-string result".to_string(), false)
-                        }
-                    }
+                    Ok(result) => result.as_string().map_or_else(
+                        || ("Tool returned non-string result".to_string(), false),
+                        |s| (s, true),
+                    ),
                     Err(e) => {
-                        let err_msg = if let Some(s) = e.as_string() {
-                            format!("Tool error: {}", s)
-                        } else {
-                            "Tool execution failed".to_string()
-                        };
+                        let err_msg = e
+                            .as_string()
+                            .map_or_else(|| "Tool execution failed".to_string(), |s| format!("Tool error: {s}"));
                         (err_msg, false)
                     }
                 };
 
-                // Record the call
+                // Record the call (saturate to u64::MAX for extremely long-running calls)
                 {
-                    let duration_ms = call_start.elapsed().as_millis() as u64;
+                    let duration_ms = u64::try_from(call_start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     let call = CoreToolCall::new(
                         tool_name.clone(),
                         json_input,
@@ -273,9 +295,9 @@ impl WasmOrchestrator {
             Ok(ast) => ast,
             Err(e) => {
                 let result = CoreOrchestratorResult::error(
-                    format!("Compilation error: {}", e),
+                    format!("Compilation error: {e}"),
                     tool_calls.borrow().clone(),
-                    start_time.elapsed().as_millis() as u64,
+                    u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX),
                 );
                 return serde_wasm_bindgen::to_value(&result)
                     .map_err(|e| JsValue::from_str(&e.to_string()));
@@ -286,7 +308,7 @@ impl WasmOrchestrator {
         let mut scope = rhai::Scope::new();
         let eval_result = engine.eval_ast_with_scope::<rhai::Dynamic>(&mut scope, &ast);
 
-        let execution_time_ms = start_time.elapsed().as_millis() as u64;
+        let execution_time_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
         let calls = tool_calls.borrow().clone();
 
         match eval_result {
@@ -296,7 +318,7 @@ impl WasmOrchestrator {
                 } else if result.is_unit() {
                     String::new()
                 } else {
-                    format!("{:?}", result)
+                    format!("{result:?}")
                 };
 
                 let result = CoreOrchestratorResult::success(output, calls, execution_time_ms);
@@ -317,7 +339,7 @@ impl WasmOrchestrator {
                             limits.inner.timeout_ms
                         )
                     }
-                    _ => format!("Execution error: {}", e),
+                    _ => format!("Execution error: {e}"),
                 };
 
                 let result = CoreOrchestratorResult::error(error_msg, calls, execution_time_ms);

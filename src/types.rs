@@ -68,7 +68,9 @@ pub struct OrchestratorResult {
 }
 
 impl OrchestratorResult {
-    /// Create a successful result
+    /// Create a successful result.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // String/Vec cannot be used in const fn on stable
     pub fn success(output: String, tool_calls: Vec<ToolCall>, execution_time_ms: u64) -> Self {
         Self {
             success: true,
@@ -79,7 +81,9 @@ impl OrchestratorResult {
         }
     }
 
-    /// Create a failed result
+    /// Create a failed result.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // String/Vec cannot be used in const fn on stable
     pub fn error(error: String, tool_calls: Vec<ToolCall>, execution_time_ms: u64) -> Self {
         Self {
             success: false,
@@ -131,7 +135,9 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    /// Create a new tool call record
+    /// Create a new tool call record.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // serde_json::Value cannot be used in const fn
     pub fn new(
         tool_name: String,
         input: serde_json::Value,

@@ -83,6 +83,18 @@ fn main() {
 
     // The orchestration script - this is what an LLM would generate
     let script = r#"
+        // Helper function to join array elements with a separator
+        fn join_array(arr, sep) {
+            let result = "";
+            for i in 0..arr.len() {
+                if i > 0 {
+                    result += sep;
+                }
+                result += arr[i];
+            }
+            result
+        }
+
         // Process activity suggestions for multiple users
         let users = ["alice", "bob", "carol"];
         let results = [];
@@ -114,10 +126,10 @@ fn main() {
                 condition = "snowy";
             }
 
-            // Extract temperature
+            // Extract temperature using find
             let temp = 70;
             let temp_idx = weather_json.index_of("temp\":");
-            if temp_idx != () {
+            if temp_idx >= 0 {
                 let temp_part = weather_json.sub_string(temp_idx + 6, 2);
                 let parsed = temp_part.parse_int();
                 if parsed != () {
@@ -141,10 +153,13 @@ fn main() {
   Suggested: ${activities_json}`);
         }
 
+        // Build results list
+        let results_list = join_array(results, "\n\n");
+
         // Return consolidated results
         `=== Personalized Activity Recommendations ===
 
-${results.join("\n\n")}
+${results_list}
 
 ---
 Processed ${users.len()} users with conditional notifications.`

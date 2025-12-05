@@ -89,6 +89,18 @@ fn main() {
     // This is the script an LLM would generate
     // Notice how it processes all data locally and only returns the summary
     let script = r#"
+        // Helper function to join array elements with a separator
+        fn join_array(arr, sep) {
+            let result = "";
+            for i in 0..arr.len() {
+                if i > 0 {
+                    result += sep;
+                }
+                result += arr[i];
+            }
+            result
+        }
+
         // Process expenses for all employees
         let employee_ids = [1, 2, 3, 4, 5];
         let total_expenses = 0.0;
@@ -107,8 +119,9 @@ fn main() {
             // Simple parsing: count occurrences and extract amounts
             let parts = expenses_json.split("amount\":");
             for i in 1..parts.len() {
-                let amount_str = parts[i].split("}").next();
-                if amount_str != () {
+                let amount_parts = parts[i].split("}");
+                if amount_parts.len() > 0 {
+                    let amount_str = amount_parts[0];
                     let amount = amount_str.parse_float();
                     if amount != () {
                         employee_total += amount;
@@ -126,13 +139,16 @@ fn main() {
             }
         }
 
+        // Build high spenders list
+        let high_spenders_list = join_array(high_spenders, "\n  ");
+
         // Return only the summary - not all the raw data!
         `Expense Report Summary:
 - Total employees processed: ${employee_ids.len()}
 - Total expense items: ${expense_count}
 - Total amount: $${total_expenses}
 - High spenders (>$1000): ${high_spenders.len()}
-  ${high_spenders.join("\n  ")}`
+  ${high_spenders_list}`
     "#;
 
     println!("Executing expense aggregation script...\n");
