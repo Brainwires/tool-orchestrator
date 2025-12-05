@@ -4,16 +4,102 @@
 [![Coverage](https://img.shields.io/badge/coverage-92.59%25-brightgreen)](https://github.com/anthropics/tool-orchestrator)
 [![Rust](https://img.shields.io/badge/rust-2024%20edition-orange)](https://www.rust-lang.org/)
 
-A model-agnostic implementation of Anthropic's "Programmatic Tool Calling" pattern. Instead of sequential tool calls consuming tokens, any LLM writes Rhai scripts that orchestrate multiple tools efficiently.
+A model-agnostic implementation of Anthropic's [Programmatic Tool Calling](https://www.anthropic.com/engineering/advanced-tool-use) pattern. Instead of sequential tool calls consuming tokens, any LLM writes Rhai scripts that orchestrate multiple tools efficiently.
 
-## Why Universal?
+## Background: The Problem with Traditional Tool Calling
 
-Anthropic's programmatic tool calling requires Claude + their Python sandbox. This crate provides the same benefits for **any LLM provider**:
+Traditional AI tool calling follows a request-response pattern:
+
+```
+LLM: "Call get_expenses(employee_id=1)"
+→ Returns 100 expense items to context
+LLM: "Call get_expenses(employee_id=2)"
+→ Returns 100 more items to context
+... (20 employees later)
+→ 2,000+ line items polluting the context window
+→ 110,000+ tokens just to produce a summary
+```
+
+Each intermediate result floods the model's context window, wasting tokens and degrading performance.
+
+## Anthropic's Solution: Programmatic Tool Calling
+
+In November 2024, Anthropic introduced [Programmatic Tool Calling (PTC)](https://www.anthropic.com/engineering/advanced-tool-use) as part of their advanced tool use features. The key insight:
+
+> **LLMs excel at writing code.** Instead of reasoning through one tool call at a time, let them write code that orchestrates entire workflows.
+
+Their approach:
+1. Claude writes Python code that calls multiple tools
+2. Code executes in Anthropic's managed sandbox
+3. Only the final result returns to the context window
+
+**Results:** 37-98% token reduction, lower latency, more reliable control flow.
+
+### References
+
+- [Introducing advanced tool use on the Claude Developer Platform](https://www.anthropic.com/engineering/advanced-tool-use) - Anthropic Engineering Blog
+- [CodeAct: Executable Code Actions Elicit Better LLM Agents](https://arxiv.org/abs/2402.01030) - Academic research on code-based tool orchestration
+
+## Why This Crate? Universal Access
+
+Anthropic's implementation has constraints:
+- **Claude-only**: Requires Claude 4.5 with the `advanced-tool-use-2025-11-20` beta header
+- **Python-only**: Scripts must be Python
+- **Anthropic-hosted**: Execution happens in their managed sandbox
+- **API-dependent**: Requires their code execution tool to be enabled
+
+**Tool Orchestrator** provides the same benefits for **any LLM provider**:
+
+| Constraint | Anthropic's PTC | Tool Orchestrator |
+|------------|-----------------|-------------------|
+| **Model** | Claude 4.5 only | Any LLM that can write code |
+| **Language** | Python | Rhai (Rust-like, easy for LLMs) |
+| **Execution** | Anthropic's sandbox | Your local process |
+| **Runtime** | Server-side (their servers) | Client-side (your control) |
+| **Dependencies** | API call + beta header | Pure Rust, zero runtime deps |
+| **Targets** | Python environments | Native Rust + WASM (browser/Node.js) |
+
+### Supported LLM Providers
 
 - Claude (all versions, not just 4.5)
-- OpenAI (GPT-4, etc.)
-- Local models (Ollama, llama.cpp)
+- OpenAI (GPT-4, GPT-4o, o1, etc.)
+- Google (Gemini Pro, etc.)
+- Anthropic competitors (Mistral, Cohere, etc.)
+- Local models (Ollama, llama.cpp, vLLM)
 - Any future provider
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     TRADITIONAL APPROACH                        │
+│                                                                 │
+│  LLM ─→ Tool Call ─→ Full Result to Context ─→ LLM reasons     │
+│  LLM ─→ Tool Call ─→ Full Result to Context ─→ LLM reasons     │
+│  LLM ─→ Tool Call ─→ Full Result to Context ─→ LLM reasons     │
+│                     (tokens multiply rapidly)                   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                 PROGRAMMATIC TOOL CALLING                       │
+│                                                                 │
+│  LLM writes script:                                             │
+│  ┌──────────────────────────────────────┐                      │
+│  │ let results = [];                     │                      │
+│  │ for id in employee_ids {              │   Executes locally   │
+│  │   let expenses = get_expenses(id);    │ ─────────────────→   │
+│  │   let flagged = expenses.filter(...); │   Tools called       │
+│  │   results.push(flagged);              │   in sandbox         │
+│  │ }                                     │                      │
+│  │ summarize(results)  // Only this      │ ←─────────────────   │
+│  └──────────────────────────────────────┘   returns to LLM     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+1. **Register tools** - Your actual tool implementations (file I/O, APIs, etc.)
+2. **LLM writes script** - Any LLM generates a Rhai script orchestrating those tools
+3. **Sandboxed execution** - Script runs locally with configurable safety limits
+4. **Minimal context** - Only the final result enters the conversation
 
 ## Multi-Target Architecture
 
@@ -21,41 +107,18 @@ This crate produces **two outputs** from a single codebase:
 
 | Target | Description | Use Case |
 |--------|-------------|----------|
-| **Rust Library** | Native Rust crate | CLI tools, server-side apps |
-| **WASM Package** | Browser/Node.js module | Web apps, npm packages |
+| **Rust Library** | Native Rust crate with `Arc<Mutex>` thread safety | CLI tools, server-side apps, native integrations |
+| **WASM Package** | Browser/Node.js module with `Rc<RefCell>` | Web apps, npm packages, browser-based AI |
 
 ## Benefits
 
-- **37% token reduction** - intermediate results don't pollute context
-- **Batch operations** - process multiple items in loops
-- **Conditional logic** - if/else based on tool results
-- **Data transformation** - process and filter between tool calls
-- **Model agnostic** - works with any LLM that can write code
-
-## How It Works
-
-1. Register tool executor functions (your actual tool implementations)
-2. LLM writes a Rhai script that calls those tools
-3. Script executes locally with safety limits
-4. Only the final result enters the conversation context
-
-```
-┌─────────────┐      ┌──────────────────┐      ┌─────────────┐
-│   Any LLM   │ ──▶  │  Rhai Script     │ ──▶  │   Tools     │
-│             │      │                  │      │             │
-│  "Write a   │      │ let files =      │      │ read_file   │
-│   script    │      │   list_dir(".")  │      │ list_dir    │
-│   that..."  │      │ for f in files { │      │ search_code │
-│             │      │   ...            │      │ git_status  │
-└─────────────┘      └──────────────────┘      └─────────────┘
-                              │
-                              ▼
-                     ┌──────────────────┐
-                     │  Final Result    │
-                     │  (only this goes │
-                     │   back to LLM)   │
-                     └──────────────────┘
-```
+- **37-98% token reduction** - Intermediate results stay in sandbox, only final output returns
+- **Batch operations** - Process thousands of items in loops without context pollution
+- **Conditional logic** - if/else based on tool results, handled in code not LLM reasoning
+- **Data transformation** - Filter, aggregate, transform between tool calls
+- **Explicit control flow** - Loops, error handling, retries are code, not implicit reasoning
+- **Model agnostic** - Works with any LLM that can write Rhai/Rust-like code
+- **Audit trail** - Every tool call is recorded with timing and results
 
 ## Installation & Building
 
@@ -174,9 +237,20 @@ let limits = ExecutionLimits::default()
     .with_timeout_ms(10_000);
 ```
 
-## Rhai Syntax Quick Reference
+## Why Rhai Instead of Python?
 
-Rhai is a Rust-like scripting language that's easy for LLMs to write:
+Anthropic uses Python because Claude is trained extensively on it. We chose [Rhai](https://rhai.rs/) for different reasons:
+
+| Factor | Python | Rhai |
+|--------|--------|------|
+| **Safety** | Requires heavy sandboxing | Sandboxed by design, no filesystem/network access |
+| **Embedding** | CPython runtime (large) | Pure Rust, compiles into your binary |
+| **WASM** | Complex (Pyodide, etc.) | Native WASM support |
+| **Syntax** | Python-specific | Rust-like (familiar to many LLMs) |
+| **Performance** | Interpreter overhead | Optimized for embedding |
+| **Dependencies** | Python ecosystem | Zero runtime dependencies |
+
+LLMs have no trouble generating Rhai - it's syntactically similar to Rust/JavaScript:
 
 ```rhai
 // Variables
@@ -255,7 +329,7 @@ wasm-pack test --headless --firefox --features wasm --no-default-features
 
 The test suite includes:
 
-**Native tests (25 tests)**
+**Native tests (39 tests)**
 - Orchestrator creation and configuration
 - Tool registration and execution
 - Script compilation and execution
@@ -283,25 +357,28 @@ The orchestrator integrates with AI agents via a tool definition:
 // Register as "execute_script" tool for the LLM
 Tool {
     name: "execute_script",
-    description: "Execute a Rhai script for programmatic tool orchestration...",
+    description: "Execute a Rhai script for programmatic tool orchestration.
+                  Write code that calls registered tools, processes results,
+                  and returns only the final output. Use loops for batch
+                  operations, conditionals for branching logic.",
     input_schema: /* script parameter */,
     requires_approval: false,  // Scripts are sandboxed
-    defer_loading: false,      // Primary tool - always available
 }
 ```
 
 When the LLM needs to perform multi-step operations, it writes a Rhai script instead of making sequential individual tool calls. The script executes locally, and only the final result enters the context window.
 
-## Comparison with Anthropic's Approach
+## Related Projects
 
-| Feature | Anthropic's | Tool Orchestrator |
-|---------|-------------|-------------------|
-| Language | Python | Rhai (Rust-like) |
-| Execution | Their sandbox | Your local process |
-| Models | Claude 4.5 only | Any LLM |
-| Runtime | Server-side | Client-side |
-| Dependencies | API call | Pure Rust, no runtime |
-| Targets | Python only | Rust + WASM |
+- **[open-ptc-agent](https://github.com/Chen-zexi/open-ptc-agent)** - Python implementation using Daytona sandbox
+- **[LangChain DeepAgents](https://github.com/langchain-ai/deepagents)** - LangChain's agent framework with code execution
+
+## Acknowledgements
+
+This project implements patterns from:
+
+- [Anthropic's Advanced Tool Use](https://www.anthropic.com/engineering/advanced-tool-use) - The original Programmatic Tool Calling concept
+- [Rhai](https://rhai.rs/) - The embedded scripting engine that makes this possible
 
 ## License
 

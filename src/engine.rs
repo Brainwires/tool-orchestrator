@@ -12,7 +12,7 @@ use std::cell::RefCell;
 #[cfg(feature = "wasm")]
 use std::rc::Rc;
 #[cfg(feature = "wasm")]
-use instant::Instant;
+use web_time::Instant;
 
 use rhai::{Engine, EvalAltResult, Scope};
 

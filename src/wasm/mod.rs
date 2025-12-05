@@ -167,7 +167,7 @@ impl WasmOrchestrator {
     /// Returns a JsValue containing the OrchestratorResult
     #[wasm_bindgen]
     pub fn execute(&self, script: &str, limits: &ExecutionLimits) -> Result<JsValue, JsValue> {
-        use instant::Instant;
+        use web_time::Instant;
 
         let start_time = Instant::now();
         let tool_calls: Rc<RefCell<Vec<CoreToolCall>>> = Rc::new(RefCell::new(Vec::new()));
