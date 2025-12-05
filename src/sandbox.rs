@@ -132,4 +132,59 @@ mod tests {
         assert_eq!(limits.max_tool_calls, 25);
         assert_eq!(limits.timeout_ms, 10_000);
     }
+
+    #[test]
+    fn test_new_equals_default() {
+        let new_limits = ExecutionLimits::new();
+        let default_limits = ExecutionLimits::default();
+
+        assert_eq!(new_limits.max_operations, default_limits.max_operations);
+        assert_eq!(new_limits.max_tool_calls, default_limits.max_tool_calls);
+        assert_eq!(new_limits.timeout_ms, default_limits.timeout_ms);
+        assert_eq!(new_limits.max_string_size, default_limits.max_string_size);
+        assert_eq!(new_limits.max_array_size, default_limits.max_array_size);
+        assert_eq!(new_limits.max_map_size, default_limits.max_map_size);
+    }
+
+    #[test]
+    fn test_with_max_string_size() {
+        let limits = ExecutionLimits::default().with_max_string_size(5_000_000);
+        assert_eq!(limits.max_string_size, 5_000_000);
+        // Other values should remain at defaults
+        assert_eq!(limits.max_operations, 100_000);
+    }
+
+    #[test]
+    fn test_with_max_array_size() {
+        let limits = ExecutionLimits::default().with_max_array_size(5_000);
+        assert_eq!(limits.max_array_size, 5_000);
+        // Other values should remain at defaults
+        assert_eq!(limits.max_operations, 100_000);
+    }
+
+    #[test]
+    fn test_with_max_map_size() {
+        let limits = ExecutionLimits::default().with_max_map_size(500);
+        assert_eq!(limits.max_map_size, 500);
+        // Other values should remain at defaults
+        assert_eq!(limits.max_operations, 100_000);
+    }
+
+    #[test]
+    fn test_full_builder_chain() {
+        let limits = ExecutionLimits::new()
+            .with_max_operations(200_000)
+            .with_max_tool_calls(75)
+            .with_timeout_ms(60_000)
+            .with_max_string_size(20_000_000)
+            .with_max_array_size(20_000)
+            .with_max_map_size(2_000);
+
+        assert_eq!(limits.max_operations, 200_000);
+        assert_eq!(limits.max_tool_calls, 75);
+        assert_eq!(limits.timeout_ms, 60_000);
+        assert_eq!(limits.max_string_size, 20_000_000);
+        assert_eq!(limits.max_array_size, 20_000);
+        assert_eq!(limits.max_map_size, 2_000);
+    }
 }

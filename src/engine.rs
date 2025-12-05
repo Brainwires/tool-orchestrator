@@ -608,4 +608,156 @@ mod tests {
         assert_eq!(result.tool_calls.len(), 1);
         assert!(result.tool_calls[0].duration_ms >= 10);
     }
+
+    #[test]
+    fn test_default_impl() {
+        // Test that Default::default() works for ToolOrchestrator
+        let orchestrator = ToolOrchestrator::default();
+        assert!(orchestrator.registered_tools().is_empty());
+
+        // Execute a simple script to verify it works
+        let result = orchestrator
+            .execute("1 + 1", ExecutionLimits::default())
+            .unwrap();
+        assert!(result.success);
+        assert_eq!(result.output, "2");
+    }
+
+    #[test]
+    fn test_timeout_error() {
+        let mut orchestrator = ToolOrchestrator::new();
+        // Register a slow tool that takes 100ms
+        orchestrator.register_executor("slow", |_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            Ok("done".to_string())
+        });
+
+        // Set timeout to 1ms (will definitely timeout after tool execution)
+        let limits = ExecutionLimits::default().with_timeout_ms(1);
+
+        let result = orchestrator.execute(r#"slow("test")"#, limits);
+
+        // Should return a timeout error
+        assert!(result.is_err());
+        match result {
+            Err(OrchestratorError::Timeout(ms)) => assert_eq!(ms, 1),
+            _ => panic!("Expected Timeout error"),
+        }
+    }
+
+    #[test]
+    fn test_runtime_error() {
+        let orchestrator = ToolOrchestrator::new();
+
+        // This should cause a runtime error (undefined variable)
+        let result = orchestrator.execute("undefined_variable", ExecutionLimits::default());
+
+        assert!(result.is_err());
+        match result {
+            Err(OrchestratorError::ExecutionError(msg)) => {
+                assert!(msg.contains("undefined_variable") || msg.contains("not found"));
+            }
+            _ => panic!("Expected ExecutionError"),
+        }
+    }
+
+    #[test]
+    fn test_registered_tools() {
+        let mut orchestrator = ToolOrchestrator::new();
+        assert!(orchestrator.registered_tools().is_empty());
+
+        orchestrator.register_executor("tool_a", |_| Ok("a".to_string()));
+        orchestrator.register_executor("tool_b", |_| Ok("b".to_string()));
+
+        let tools = orchestrator.registered_tools();
+        assert_eq!(tools.len(), 2);
+        assert!(tools.contains(&"tool_a"));
+        assert!(tools.contains(&"tool_b"));
+    }
+
+    #[test]
+    fn test_dynamic_to_json_array() {
+        use rhai::Dynamic;
+
+        // Create an array
+        let arr: Vec<Dynamic> = vec![
+            Dynamic::from(1_i64),
+            Dynamic::from(2_i64),
+            Dynamic::from(3_i64),
+        ];
+        let d = Dynamic::from(arr);
+        let j = dynamic_to_json(&d);
+
+        assert_eq!(j, serde_json::json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn test_dynamic_to_json_map() {
+        use rhai::{Dynamic, Map};
+
+        // Create a map
+        let mut map = Map::new();
+        map.insert("key".into(), Dynamic::from("value".to_string()));
+        map.insert("num".into(), Dynamic::from(42_i64));
+        let d = Dynamic::from(map);
+        let j = dynamic_to_json(&d);
+
+        assert!(j.is_object());
+        let obj = j.as_object().unwrap();
+        assert_eq!(obj.get("key").unwrap(), &serde_json::json!("value"));
+        assert_eq!(obj.get("num").unwrap(), &serde_json::json!(42));
+    }
+
+    #[test]
+    fn test_non_string_result() {
+        // Test that non-string results are formatted with Debug
+        let orchestrator = ToolOrchestrator::new();
+
+        // Return an integer (not a string)
+        let result = orchestrator
+            .execute("42", ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.output, "42");
+    }
+
+    #[test]
+    fn test_array_result() {
+        // Test that array results are formatted
+        let orchestrator = ToolOrchestrator::new();
+
+        let result = orchestrator
+            .execute("[1, 2, 3]", ExecutionLimits::default())
+            .unwrap();
+
+        assert!(result.success);
+        // Arrays are formatted with Debug
+        assert!(result.output.contains("1"));
+        assert!(result.output.contains("2"));
+        assert!(result.output.contains("3"));
+    }
+
+    #[test]
+    fn test_dynamic_to_json_fallback() {
+        use rhai::Dynamic;
+
+        // Create a custom type that doesn't match standard types
+        // Using a timestamp (FnPtr or similar) that falls through to the else branch
+        #[derive(Clone)]
+        struct CustomType {
+            #[allow(dead_code)]
+            value: i32,
+        }
+
+        let custom = CustomType { value: 42 };
+        let d = Dynamic::from(custom);
+        let j = dynamic_to_json(&d);
+
+        // Should fall back to string representation via Debug
+        assert!(j.is_string());
+        // The string should contain some representation of the type
+        let s = j.as_str().unwrap();
+        assert!(!s.is_empty());
+    }
 }
