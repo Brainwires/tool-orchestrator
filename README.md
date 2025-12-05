@@ -237,6 +237,48 @@ let limits = ExecutionLimits::default()
     .with_timeout_ms(10_000);
 ```
 
+## Security Considerations
+
+### What the Sandbox Prevents
+
+Rhai scripts executed by this crate **cannot**:
+- Access the filesystem (no `std::fs`, no file I/O)
+- Make network requests (no sockets, no HTTP)
+- Execute shell commands (no `std::process`)
+- Access environment variables
+- Spawn threads or processes
+- Access raw memory or use unsafe code
+
+The only way scripts interact with the outside world is through **explicitly registered tools**.
+
+### Tool Implementer Responsibility
+
+**You are responsible for the security of tools you register.** If you register a tool that:
+- Executes shell commands → scripts can run arbitrary commands
+- Reads/writes files → scripts can access your filesystem
+- Makes HTTP requests → scripts can exfiltrate data
+
+Design your tools with the principle of least privilege.
+
+### Timeout Behavior
+
+The `timeout_ms` limit uses Rhai's `on_progress` callback for **real-time enforcement**:
+- Timeout is checked after every Rhai operation (not just at the end)
+- CPU-intensive loops will be terminated mid-execution when timeout is exceeded
+- **Note:** Timeout checks don't occur *during* a tool call - if a registered tool blocks for 10 seconds, that time isn't interruptible
+- For tools that may block, implement your own timeouts within the tool executor
+
+### Recommended Limits for Untrusted Input
+
+```rust
+let limits = ExecutionLimits::default()
+    .with_max_operations(10_000)      // Tight loop protection
+    .with_max_tool_calls(5)           // Limit external interactions
+    .with_timeout_ms(5_000)           // 5 second max
+    .with_max_string_size(100_000)    // 100KB strings
+    .with_max_array_size(1_000);      // 1K elements
+```
+
 ## Why Rhai Instead of Python?
 
 Anthropic uses Python because Claude is trained extensively on it. We chose [Rhai](https://rhai.rs/) for different reasons:

@@ -174,6 +174,17 @@ impl ToolOrchestrator {
         engine.set_max_map_size(limits.max_map_size);
         engine.set_max_expr_depths(64, 64);
 
+        // Set up real-time timeout via on_progress callback
+        let timeout_ms = limits.timeout_ms;
+        let progress_start = Instant::now();
+        engine.on_progress(move |_ops| {
+            if progress_start.elapsed().as_millis() as u64 > timeout_ms {
+                Some(rhai::Dynamic::from("timeout"))
+            } else {
+                None
+            }
+        });
+
         // Register each tool as a Rhai function
         for (name, executor) in &self.executors {
             let exec = clone_shared(executor);
@@ -228,15 +239,13 @@ impl ToolOrchestrator {
                 EvalAltResult::ErrorTooManyOperations(_) => {
                     OrchestratorError::MaxOperationsExceeded(limits.max_operations)
                 }
+                EvalAltResult::ErrorTerminated(_, _) => {
+                    OrchestratorError::Timeout(limits.timeout_ms)
+                }
                 _ => OrchestratorError::ExecutionError(e.to_string()),
             })?;
 
         let execution_time_ms = start_time.elapsed().as_millis() as u64;
-
-        // Check timeout (post-execution check, Rhai doesn't have built-in timeout)
-        if execution_time_ms > limits.timeout_ms {
-            return Err(OrchestratorError::Timeout(limits.timeout_ms));
-        }
 
         // Convert result to string
         let output = if result.is_string() {
@@ -625,23 +634,31 @@ mod tests {
 
     #[test]
     fn test_timeout_error() {
-        let mut orchestrator = ToolOrchestrator::new();
-        // Register a slow tool that takes 100ms
-        orchestrator.register_executor("slow", |_| {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            Ok("done".to_string())
-        });
+        let orchestrator = ToolOrchestrator::new();
 
-        // Set timeout to 1ms (will definitely timeout after tool execution)
-        let limits = ExecutionLimits::default().with_timeout_ms(1);
+        // Use a CPU-intensive loop that will trigger on_progress checks
+        // Set timeout to 1ms - the loop will exceed this quickly
+        let limits = ExecutionLimits::default()
+            .with_timeout_ms(1)
+            .with_max_operations(1_000_000); // Allow many ops so timeout triggers first
 
-        let result = orchestrator.execute(r#"slow("test")"#, limits);
+        // This loop will keep running until timeout kicks in via on_progress
+        let result = orchestrator.execute(
+            r#"
+            let sum = 0;
+            for i in 0..1000000 {
+                sum += i;
+            }
+            sum
+            "#,
+            limits,
+        );
 
-        // Should return a timeout error
+        // Should return a timeout error (real-time via on_progress)
         assert!(result.is_err());
         match result {
             Err(OrchestratorError::Timeout(ms)) => assert_eq!(ms, 1),
-            _ => panic!("Expected Timeout error"),
+            _ => panic!("Expected Timeout error, got: {:?}", result),
         }
     }
 

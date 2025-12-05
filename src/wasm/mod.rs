@@ -183,6 +183,17 @@ impl WasmOrchestrator {
         engine.set_max_map_size(limits.inner.max_map_size);
         engine.set_max_expr_depths(64, 64);
 
+        // Set up real-time timeout via on_progress callback
+        let timeout_ms = limits.inner.timeout_ms;
+        let progress_start = Instant::now();
+        engine.on_progress(move |_ops| {
+            if progress_start.elapsed().as_millis() as u64 > timeout_ms {
+                Some(rhai::Dynamic::from("timeout"))
+            } else {
+                None
+            }
+        });
+
         // Register each JS tool as a Rhai function
         for (name, executor) in &self.js_executors {
             let exec = Rc::clone(executor);
@@ -267,17 +278,6 @@ impl WasmOrchestrator {
         let execution_time_ms = start_time.elapsed().as_millis() as u64;
         let calls = tool_calls.borrow().clone();
 
-        // Check timeout
-        if execution_time_ms > limits.inner.timeout_ms {
-            let result = CoreOrchestratorResult::error(
-                format!("Execution timed out after {}ms", limits.inner.timeout_ms),
-                calls,
-                execution_time_ms,
-            );
-            return serde_wasm_bindgen::to_value(&result)
-                .map_err(|e| JsValue::from_str(&e.to_string()));
-        }
-
         match eval_result {
             Ok(result) => {
                 let output = if result.is_string() {
@@ -298,6 +298,12 @@ impl WasmOrchestrator {
                         format!(
                             "Script exceeded maximum operations ({})",
                             limits.inner.max_operations
+                        )
+                    }
+                    rhai::EvalAltResult::ErrorTerminated(_, _) => {
+                        format!(
+                            "Script execution timed out after {}ms",
+                            limits.inner.timeout_ms
                         )
                     }
                     _ => format!("Execution error: {}", e),
