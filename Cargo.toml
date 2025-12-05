@@ -1,30 +1,72 @@
 [package]
 name = "tool-orchestrator"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 description = "Rhai-based tool orchestration for AI agents - implements Anthropic's programmatic tool calling pattern"
 license = "MIT"
 authors = ["Brainwires Team"]
 keywords = ["ai", "agent", "tools", "orchestration", "rhai"]
 repository = "https://github.com/Brainwires/tool-orchestrator"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "tool-orchestrator-mcp"
+path = "src/bin/mcp_server.rs"
+required-features = ["mcp-server"]
+
+[features]
+default = ["native"]
+# Native mode: thread-safe with Arc/Mutex and std::time
+native = ["rhai/sync"]
+# WASM mode: single-threaded with Rc/RefCell and instant crate
+wasm = [
+    "wasm-bindgen",
+    "js-sys",
+    "web-sys",
+    "serde-wasm-bindgen",
+    "instant",
+    "getrandom/js",
+    "console_error_panic_hook",
+]
+# MCP stdio server (uses official rmcp SDK)
+mcp-server = ["native", "rmcp", "tokio", "tracing-subscriber", "schemars"]
+
 [dependencies]
 # Embedded scripting engine (pure Rust)
-rhai = { version = "1.20", features = ["sync", "serde"] }
+# Note: "sync" feature is enabled via "native" feature for thread-safety
+rhai = { version = "1.20", default-features = false, features = ["serde", "std"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Async runtime support
-tokio = { version = "1", features = ["rt", "sync", "time"] }
-
 # Error handling
-anyhow = "1.0"
 thiserror = "2.0"
 
-# Logging
+# Logging (always available, zero-cost when not used)
 tracing = "0.1"
+
+# === WASM-only dependencies ===
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console"], optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+instant = { version = "0.1", features = ["wasm-bindgen"], optional = true }
+getrandom = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+# === MCP server dependencies ===
+rmcp = { version = "0.8", features = ["server", "transport-io", "macros"], optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+schemars = { version = "0.8", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = "s"
+lto = true

@@ -11,6 +11,16 @@ Anthropic's programmatic tool calling requires Claude + their Python sandbox. Th
 - Local models (Ollama, llama.cpp)
 - Any future provider
 
+## Multi-Target Architecture
+
+This crate produces **three outputs** from a single codebase:
+
+| Target | Description | Use Case |
+|--------|-------------|----------|
+| **Rust Library** | Native Rust crate | CLI tools, server-side apps |
+| **WASM Package** | Browser/Node.js module | Web apps, npm packages |
+| **MCP Server** | stdio-based Model Context Protocol server | Easy integration with AI assistants |
+
 ## Benefits
 
 - **37% token reduction** - intermediate results don't pollute context
@@ -44,7 +54,43 @@ Anthropic's programmatic tool calling requires Claude + their Python sandbox. Th
                      └──────────────────┘
 ```
 
+## Installation & Building
+
+### Rust Library (default)
+
+```bash
+# Add to Cargo.toml
+cargo add tool-orchestrator
+
+# Or build from source
+cargo build
+```
+
+### WASM Package
+
+```bash
+# Build for web (browser)
+wasm-pack build --target web --features wasm --no-default-features
+
+# Build for Node.js
+wasm-pack build --target nodejs --features wasm --no-default-features
+
+# The package is generated in ./pkg/
+```
+
+### MCP Server
+
+```bash
+# Build the MCP server binary
+cargo build --release --features mcp-server --bin tool-orchestrator-mcp
+
+# Run the server (uses stdio transport)
+./target/release/tool-orchestrator-mcp
+```
+
 ## Usage
+
+### Rust Library
 
 ```rust
 use tool_orchestrator::{ToolOrchestrator, ExecutionLimits};
@@ -82,6 +128,80 @@ let script = r#"
 let result = orchestrator.execute(script, ExecutionLimits::default())?;
 println!("Output: {}", result.output);           // Final result only
 println!("Tool calls: {:?}", result.tool_calls); // Audit trail
+```
+
+### WASM (JavaScript/TypeScript)
+
+```typescript
+import init, { WasmOrchestrator, ExecutionLimits } from 'tool-orchestrator';
+
+await init();
+
+const orchestrator = new WasmOrchestrator();
+
+// Register a JavaScript function as a tool
+orchestrator.register_tool('get_weather', (inputJson: string) => {
+  const input = JSON.parse(inputJson);
+  // Your implementation here
+  return JSON.stringify({ temp: 72, condition: 'sunny' });
+});
+
+// Execute a Rhai script
+const limits = new ExecutionLimits();
+const result = orchestrator.execute(`
+  let weather = get_weather("San Francisco");
+  \`Current weather: \${weather}\`
+`, limits);
+
+console.log(result);
+// { success: true, output: "Current weather: ...", tool_calls: [...] }
+```
+
+### MCP Server
+
+The MCP server exposes these tools via the Model Context Protocol:
+
+| Tool | Description |
+|------|-------------|
+| `execute_script` | Execute a Rhai script with registered tools |
+| `register_tool` | Register a shell command as a callable tool |
+| `unregister_tool` | Remove a registered tool |
+| `list_tools` | List all registered shell tools |
+
+#### Claude Desktop Configuration
+
+Add to `~/.config/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "tool-orchestrator": {
+      "command": "/path/to/tool-orchestrator-mcp"
+    }
+  }
+}
+```
+
+#### Example MCP Usage
+
+```json
+// Register a shell tool
+{
+  "name": "register_tool",
+  "arguments": {
+    "name": "list_files",
+    "description": "List files in a directory",
+    "command": "ls -la $input"
+  }
+}
+
+// Execute a script using registered tools
+{
+  "name": "execute_script",
+  "arguments": {
+    "script": "let files = list_files(\".\"); `Files: ${files}`"
+  }
+}
 ```
 
 ## Safety & Sandboxing
@@ -145,6 +265,14 @@ let content = read_file("README.md");
 let files = list_directory("src");
 ```
 
+## Feature Flags
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `native` | Yes | Thread-safe with `Arc<Mutex>` (for native Rust) |
+| `wasm` | No | Single-threaded with `Rc<RefCell>` (for browser/Node.js) |
+| `mcp-server` | No | MCP stdio server binary using `rmcp` SDK |
+
 ## Integration Example
 
 The orchestrator integrates with AI agents via a tool definition:
@@ -171,6 +299,7 @@ When the LLM needs to perform multi-step operations, it writes a Rhai script ins
 | Models | Claude 4.5 only | Any LLM |
 | Runtime | Server-side | Client-side |
 | Dependencies | API call | Pure Rust, no runtime |
+| Targets | Python only | Rust, WASM, MCP |
 
 ## License
 

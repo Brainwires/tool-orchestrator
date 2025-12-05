@@ -4,12 +4,21 @@
 //! tool orchestration. Instead of sequential tool calls, AI writes Rhai scripts
 //! that orchestrate multiple tools, returning only the final result.
 //!
+//! ## Features
+//!
+//! This crate supports multiple build targets via feature flags:
+//!
+//! - **`native`** (default) - Thread-safe Rust library with `Arc`/`Mutex`
+//! - **`wasm`** - WebAssembly bindings for browser/Node.js via `wasm-bindgen`
+//! - **`mcp-server`** - stdio-based MCP server binary
+//!
 //! ## Benefits
+//!
 //! - **37% token reduction** - intermediate results don't pollute context
 //! - **Parallel execution** - multiple tools in one pass
 //! - **Complex orchestration** - loops, conditionals, data processing
 //!
-//! ## Example
+//! ## Example (Native)
 //!
 //! ```ignore
 //! use tool_orchestrator::{ToolOrchestrator, ExecutionLimits};
@@ -26,11 +35,43 @@
 //!
 //! assert_eq!(result.output, "Hello, Claude!");
 //! ```
+//!
+//! ## Example (WASM)
+//!
+//! ```javascript
+//! import { WasmOrchestrator, ExecutionLimits } from 'tool-orchestrator';
+//!
+//! const orchestrator = new WasmOrchestrator();
+//! orchestrator.register_tool('greet', (input) => {
+//!     const name = JSON.parse(input);
+//!     return `Hello, ${name}!`;
+//! });
+//!
+//! const result = orchestrator.execute(
+//!     'greet("Claude")',
+//!     ExecutionLimits.quick()
+//! );
+//!
+//! console.log(result.output); // "Hello, Claude!"
+//! ```
 
-mod engine;
-mod sandbox;
-mod types;
+// Core modules (always available)
+pub mod engine;
+pub mod sandbox;
+pub mod types;
 
-pub use engine::{ToolExecutor, ToolOrchestrator};
+// Re-export core types
+pub use engine::{dynamic_to_json, ToolExecutor, ToolOrchestrator};
 pub use sandbox::ExecutionLimits;
 pub use types::{OrchestratorError, OrchestratorResult, ToolCall};
+
+// WASM module (only when wasm feature is enabled)
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
+#[cfg(feature = "wasm")]
+pub use wasm::{ExecutionLimits as WasmExecutionLimits, WasmOrchestrator};
+
+// MCP module (only when mcp-server feature is enabled)
+#[cfg(feature = "mcp-server")]
+pub mod mcp;
