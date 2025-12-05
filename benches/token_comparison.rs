@@ -152,11 +152,18 @@ fn print_comparison_report() {
     println!("\nToken Reduction: {:.1}%", reduction);
 }
 
-criterion_group!(benches, benchmark_comparison);
-criterion_main!(benches);
-
-// Also allow running as a simple binary for the report
-#[cfg(not(feature = "bench"))]
-fn main() {
-    print_comparison_report();
+/// Print detailed comparison report (called during benchmark)
+fn report_during_bench() {
+    // Only print report in verbose mode or when explicitly requested
+    if std::env::var("PRINT_REPORT").is_ok() {
+        print_comparison_report();
+    }
 }
+
+fn benchmark_with_report(c: &mut Criterion) {
+    report_during_bench();
+    benchmark_comparison(c);
+}
+
+criterion_group!(benches, benchmark_with_report);
+criterion_main!(benches);

@@ -54,6 +54,13 @@
 //! console.log(result.output); // "Hello, Claude!"
 //! ```
 
+// Require either native or wasm feature
+#[cfg(not(any(feature = "native", feature = "wasm")))]
+compile_error!(
+    "Either the `native` or `wasm` feature must be enabled. \
+     Add `features = [\"native\"]` to your Cargo.toml dependency or use `--features native`."
+);
+
 // Core modules (always available)
 pub mod engine;
 pub mod sandbox;
