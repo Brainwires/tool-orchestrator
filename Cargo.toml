@@ -1,12 +1,16 @@
 [package]
 name = "tool-orchestrator"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Rhai-based tool orchestration for AI agents - implements Anthropic's programmatic tool calling pattern"
 license = "MIT"
 authors = ["Brainwires Team"]
 keywords = ["ai", "agent", "tools", "orchestration", "rhai"]
+categories = ["development-tools", "wasm", "api-bindings"]
 repository = "https://github.com/Brainwires/tool-orchestrator"
+documentation = "https://docs.rs/tool-orchestrator"
+readme = "README.md"
+rust-version = "1.85"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

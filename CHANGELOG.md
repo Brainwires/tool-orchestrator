@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-01-24
+
+### Changed
+- **Version bump to 1.0.0** - Production-ready release
+- Added compile-time guard preventing simultaneous use of `native` and `wasm` features
+- Added `categories`, `documentation`, `readme`, and `rust-version` fields to Cargo.toml
+
+### Fixed
+- Compilation error when both `native` and `wasm` features were enabled together
+
 ## [0.1.0] - 2025-12-05
 
 ### Development History
@@ -108,5 +118,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implements patterns from [Anthropic's Advanced Tool Use](https://www.anthropic.com/engineering/advanced-tool-use)
 - Inspired by [CodeAct](https://arxiv.org/abs/2402.01030) research on code-based tool orchestration
 
-[Unreleased]: https://github.com/Brainwires/tool-orchestrator/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Brainwires/tool-orchestrator/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Brainwires/tool-orchestrator/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/Brainwires/tool-orchestrator/releases/tag/v0.1.0

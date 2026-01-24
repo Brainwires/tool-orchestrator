@@ -54,11 +54,17 @@
 //! console.log(result.output); // "Hello, Claude!"
 //! ```
 
-// Require either native or wasm feature
+// Require either native or wasm feature (but not both)
 #[cfg(not(any(feature = "native", feature = "wasm")))]
 compile_error!(
     "Either the `native` or `wasm` feature must be enabled. \
      Add `features = [\"native\"]` to your Cargo.toml dependency or use `--features native`."
+);
+
+#[cfg(all(feature = "native", feature = "wasm"))]
+compile_error!(
+    "The `native` and `wasm` features are mutually exclusive. \
+     Use `--features native` for Rust library or `--no-default-features --features wasm` for WASM."
 );
 
 // Core modules (always available)
