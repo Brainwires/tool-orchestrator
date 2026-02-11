@@ -1,7 +1,7 @@
 # Tool Orchestrator - Universal Programmatic Tool Calling
 
-[![Tests](https://img.shields.io/badge/tests-64%20passing-brightgreen)](https://github.com/anthropics/tool-orchestrator)
-[![Coverage](https://img.shields.io/badge/coverage-92.59%25-brightgreen)](https://github.com/anthropics/tool-orchestrator)
+[![Tests](https://img.shields.io/badge/tests-64%20passing-brightgreen)](https://github.com/Brainwires/tool-orchestrator)
+[![Coverage](https://img.shields.io/badge/coverage-92.59%25-brightgreen)](https://github.com/Brainwires/tool-orchestrator)
 [![Rust](https://img.shields.io/badge/rust-2024%20edition-orange)](https://www.rust-lang.org/)
 
 A model-agnostic implementation of Anthropic's [Programmatic Tool Calling](https://www.anthropic.com/engineering/advanced-tool-use) pattern. Instead of sequential tool calls consuming tokens, any LLM writes Rhai scripts that orchestrate multiple tools efficiently.
